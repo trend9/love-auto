@@ -3,62 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>結姉さんの回答 - AI恋愛相談室</title>
+    <title>結姉さんの回答</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        #post-content {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: white;
-            line-height: 1.8;
-        }
-        #post-content h1 { color: #d63384; border-left: 5px solid #d63384; padding-left: 15px; margin-bottom: 30px; }
-        #post-content h2 { color: #555; background: #fff0f5; padding: 10px; border-radius: 5px; }
-        .back-link { text-align: center; margin: 40px 0; }
-        .back-link a { background: #d63384; color: white; padding: 10px 25px; text-decoration: none; border-radius: 25px; }
+        body { background-color: #fff9fb; margin: 0; font-family: sans-serif; }
+        header { background: #d63384; color: white; padding: 15px 0; }
+        .header-inner { max-width: 800px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; }
+        .header-inner a { color: white; text-decoration: none; font-weight: bold; }
+        .yui-mini { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }
+
+        #post-content { max-width: 800px; margin: 30px auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { color: #d63384; border-bottom: 2px solid #ffc0cb; padding-bottom: 10px; font-size: 1.5rem; }
+        h2 { font-size: 1.2rem; color: #555; margin-top: 30px; border-left: 5px solid #ffc0cb; padding-left: 15px; }
+        p { line-height: 1.8; color: #333; }
+        .back-box { text-align: center; margin: 40px; }
+        .btn-back { background: #d63384; color: white; padding: 12px 30px; text-decoration: none; border-radius: 30px; }
     </style>
 </head>
 <body>
-    <header style="background: #d63384; color: white; padding: 10px 0; text-align: center;">
-        <a href="index.html" style="color: white; text-decoration: none; font-weight: bold;">← トップへ戻る</a>
+    <header>
+        <div class="header-inner">
+            <a href="index.html">← 結姉さんの相談室トップへ</a>
+        </div>
     </header>
 
     <main>
-        <article id="post-content">
-            <p>相談内容を読み込んでいます...</p>
-        </article>
-        <div class="back-link">
-            <a href="index.html">他のお悩みを見る</a>
+        <article id="post-content">記事を読み込み中...</article>
+        <div class="back-box">
+            <a href="index.html" class="btn-back">他のお悩みを見る</a>
         </div>
     </main>
 
-    <footer style="text-align: center; padding: 20px; color: #888;">
-        <p>&copy; 2026 結姉さんのAI恋愛相談室</p>
-    </footer>
-
     <script>
         const params = new URLSearchParams(window.location.search);
-        const filePath = params.get('file');
-
-        if (filePath) {
-            // キャッシュを避けてMarkdownを取得
-            fetch(filePath + '?v=' + new Date().getTime())
-                .then(response => {
-                    if (!response.ok) throw new Error('記事ファイルが見つかりません: ' + filePath);
-                    return response.text();
-                })
-                .then(markdown => {
-                    // MarkdownをHTMLに変換
-                    document.getElementById('post-content').innerHTML = marked.parse(markdown);
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.getElementById('post-content').innerHTML = `<h2>申し訳ありません</h2><p>記事の読み込みに失敗しました。</p><p><small>${err.message}</small></p>`;
+        const file = params.get('file');
+        if (file) {
+            fetch(file + '?t=' + Date.now())
+                .then(res => res.text())
+                .then(md => {
+                    document.getElementById('post-content').innerHTML = marked.parse(md);
                 });
-        } else {
-            document.getElementById('post-content').innerHTML = '<p>記事が指定されていません。</p>';
         }
     </script>
 </body>

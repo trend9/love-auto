@@ -6,110 +6,200 @@
     <title>結姉さんのAI恋愛相談室</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* レイアウト崩れを強制的に直す追加スタイル */
-        #question-list {
-            list-style: none;
+        /* レイアウトの強制上書き */
+        body {
+            margin: 0;
             padding: 0;
-            margin: 20px 0;
+            background-color: #fff9fb;
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            overflow-x: hidden;
         }
+
+        /* 画面全体の設計：3カラム風（左：空、中：メイン、右：結姉さん） */
+        .site-wrapper {
+            display: grid;
+            grid-template-columns: 1fr minmax(auto, 800px) 1fr;
+            width: 100%;
+            min-height: 100vh;
+        }
+
+        /* メインエリア（中央） */
+        main {
+            grid-column: 2; /* 中央の列に配置 */
+            background: white;
+            padding: 40px;
+            box-sizing: border-box;
+            box-shadow: 0 0 20px rgba(0,0,0,0.03);
+            min-height: 100vh;
+        }
+
+        header h1 {
+            color: #d63384;
+            border-bottom: 3px solid #ffc0cb;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
         .question-item {
-            background: #fff;
-            border-bottom: 1px dashed #ffc0cb;
-            padding: 15px;
-            transition: 0.3s;
+            padding: 20px 0;
+            border-bottom: 1px solid #fef0f5;
         }
-        .question-item:hover {
-            background: #fff5f7;
-        }
+
         .question-item a {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+            font-size: 1.15rem;
+            display: block;
+            margin-top: 5px;
+        }
+
+        /* --- 右側サイドバー（結姉さん） --- */
+        .sidebar-right {
+            grid-column: 3; /* 右側の列に配置 */
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* 右下側に配置 */
+            align-items: center;
+            padding-bottom: 0;
+            overflow: visible;
+        }
+
+        .yui-visual-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .yui-visual-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            vertical-align: bottom;
+        }
+
+        /* 結姉さんの上の吹き出し */
+        .yui-bubble-link {
+            position: absolute;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 2px solid #ffc0cb;
+            padding: 12px 20px;
+            border-radius: 30px;
             text-decoration: none;
             color: #d63384;
             font-weight: bold;
-            display: block;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transition: 0.3s;
+            z-index: 100;
         }
-        .date-tag {
-            font-size: 0.8em;
-            color: #999;
-            margin-bottom: 5px;
-            display: block;
+
+        .yui-bubble-link:hover {
+            background: #d63384;
+            color: white;
         }
-        .archive-info {
-            text-align: center;
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 20px;
+
+        .yui-bubble-link::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            margin-left: -10px;
+            border-width: 10px 10px 0 10px;
+            border-style: solid;
+            border-color: white transparent transparent transparent;
+        }
+
+        /* --- モバイル対応（900px以下） --- */
+        .mobile-chibi-fixed { display: none; }
+
+        @media (max-width: 900px) {
+            .site-wrapper {
+                grid-template-columns: 1fr; /* 1カラムにする */
+            }
+            main {
+                grid-column: 1;
+                padding: 20px;
+            }
+            .sidebar-right {
+                display: none !important;
+            }
+            .mobile-chibi-fixed {
+                display: block;
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 9999;
+            }
+            .mobile-chibi-fixed img {
+                width: 80px;
+                height: auto;
+                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+            }
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-content" style="display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <img src="yui.png" alt="結姉さん" class="yui-icon" style="width: 60px; height: 60px; border-radius: 50%; margin-right: 15px;">
-            <h1 style="margin: 0; font-size: 1.5rem;">結姉さんのAI恋愛相談室</h1>
-        </div>
-    </header>
 
-    <main style="max-width: 800px; margin: 0 auto; padding: 20px;">
-        <section id="hero" style="text-align: center; margin-bottom: 30px;">
-            <h2 style="color: #d63384; border-bottom: 2px solid #ffc0cb; display: inline-block; padding-bottom: 5px;">最近届いたお悩み相談</h2>
-        </section>
+    <div class="site-wrapper">
+        <div></div>
 
-        <section id="archive-section">
-            <div id="question-list">
-                <p id="loading-msg">相談を読み込んでいます...</p>
+        <main>
+            <header>
+                <h1>結姉さんのAI恋愛相談室</h1>
+            </header>
+            
+            <div id="article-list">
+                <p>読み込み中よ、少し待ってね...</p>
             </div>
-        </section>
 
-        <section id="character-info" style="margin-top: 50px; display: flex; align-items: center; background: #fff0f5; padding: 20px; border-radius: 15px;">
-            <img src="chibi.png" alt="ちび結" class="chibi-icon" style="width: 80px; margin-right: 20px;">
-            <div class="bubble">
-                <p style="margin: 0;">過去のお悩みも全部ここに残していくわ。あなたの悩みと似ている誰かの解決策が見つかるかもしれないわね。</p>
+            <footer style="margin-top: 100px; text-align: center; color: #ddd; font-size: 0.8rem;">
+                &copy; 2026 結姉さんのAI恋愛相談室
+            </footer>
+        </main>
+
+        <aside class="sidebar-right">
+            <div class="yui-visual-container">
+                <a href="profile.html" class="yui-bubble-link">結姉さんのプロフィール</a>
+                <img src="yui.png" alt="結姉さん">
             </div>
-        </section>
-    </main>
+        </aside>
+    </div>
 
-    <footer style="text-align: center; padding: 30px; color: #888;">
-        <p>&copy; 2026 結姉さんのAI恋愛相談室</p>
-    </footer>
+    <div class="mobile-chibi-fixed">
+        <a href="profile.html">
+            <img src="yuichibi.png" alt="ちび結">
+        </a>
+    </div>
 
     <script>
-        // キャッシュ回避のためにランダムな数値を付けてJSONを取得
-        fetch('data/questions.json?v=' + new Date().getTime())
-            .then(response => {
-                if (!response.ok) throw new Error('JSONが見つかりません');
-                return response.json();
-            })
+        fetch('data/questions.json?v=' + Date.now())
+            .then(res => res.json())
             .then(data => {
-                const list = document.getElementById('question-list');
-                list.innerHTML = ''; // ローディングメッセージを消去
-
+                const list = document.getElementById('article-list');
+                list.innerHTML = '';
                 if (!data || data.length === 0) {
-                    list.innerHTML = '<p>現在、新しいお悩みを準備中です。</p>';
+                    list.innerHTML = '<p>まだお悩みは届いていないみたい。</p>';
                     return;
                 }
-
-                // 最新20件を表示
-                const recent = data.slice(0, 20);
-                recent.forEach(q => {
+                data.slice(0, 20).forEach(q => {
                     const item = document.createElement('div');
                     item.className = 'question-item';
                     item.innerHTML = `
-                        <span class="date-tag">${q.date}</span>
+                        <div style="font-size:0.8rem; color:#bbb;">${q.date}</div>
                         <a href="post.html?file=${q.file}">${q.title}</a>
                     `;
                     list.appendChild(item);
                 });
-
-                if (data.length > 20) {
-                    const info = document.createElement('p');
-                    info.className = 'archive-info';
-                    info.innerText = `他、全${data.length}件の相談がアーカイブされています`;
-                    list.appendChild(info);
-                }
             })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('question-list').innerHTML = '<p>データの読み込みに失敗しました。時間をおいて再度お試しください。</p>';
+            .catch(err => {
+                document.getElementById('article-list').innerHTML = '<p>読み込みエラーよ。</p>';
             });
     </script>
 </body>
