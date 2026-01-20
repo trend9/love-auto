@@ -13,7 +13,7 @@ RSS_URLS = [
 ]
 
 MODEL_PATH = "./models/model.gguf"
-BATCH_SIZE = 15 # 今回は多めに15件を目標にします
+BATCH_SIZE = 1 # 今回は多めに15件を目標にします
 
 def generate_answer(question):
     print(f"回答を生成中: {question[:30]}...")
