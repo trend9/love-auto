@@ -33,8 +33,17 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 確実に全ての変更（jsonとmd）をステージングする
-          git add data/questions.json posts/*.md
-          # 変更がある場合のみコミットし、強制的にメインブランチへ送る
+          
+          # 変更を確認するためのデバッグ
+          ls -R posts/
+          ls -l data/questions.json
+          
+          # フォルダごと強制的に追加
+          git add data/questions.json
+          git add posts/*.md
+          
+          # 変更がある場合のみコミット
           git commit -m "Update: Added new questions and posts [skip ci]" || echo "No changes to commit"
+          
+          # 強制プッシュ
           git push origin main --force
