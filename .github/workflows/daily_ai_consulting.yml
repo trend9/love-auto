@@ -37,17 +37,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add data/questions.json posts/*.md
           git commit -m "Update: Added new posts [skip ci]" || echo "No changes"
           git push origin main --force
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
-          exclude: |
-            models/
-            .git/
+          # ここがポイント！publicフォルダ（数MB）だけを公開対象にする
+          path: './public'
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4

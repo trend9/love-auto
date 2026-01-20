@@ -1,6 +1,7 @@
 import feedparser
 import os
 import json
+import shutil
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -22,11 +23,13 @@ def main():
     feed = feedparser.parse(RSS_URL)
     entries = feed.entries[:BATCH_SIZE]
     
+    # フォルダ準備
     os.makedirs("posts", exist_ok=True)
     os.makedirs("data", exist_ok=True)
+    os.makedirs("public/data", exist_ok=True)
+    os.makedirs("public/posts", exist_ok=True)
     
     questions_data = []
-    # 既存データの読み込み
     if os.path.exists("data/questions.json"):
         try:
             with open("data/questions.json", "r", encoding="utf-8") as f:
@@ -50,15 +53,25 @@ def main():
             "date": datetime.now().strftime("%Y/%m/%d")
         })
 
-    # 重要：書き込みを確定させる
-    json_path = "data/questions.json"
-    with open(json_path, "w", encoding="utf-8") as f:
+    # JSON保存
+    with open("data/questions.json", "w", encoding="utf-8") as f:
         json.dump(questions_data[:50], f, ensure_ascii=False, indent=4)
     
-    # ログに出力して確認
-    print(f"--- 完了確認 ---")
-    print(f"生成ファイル数: {len(entries)}")
-    print(f"JSONサイズ: {os.path.getsize(json_path)} bytes")
+    # --- 公開用フォルダ (public) へのコピー ---
+    # models フォルダ以外をすべて public に集める
+    site_files = ["index.html", "post.html", "style.css"] # 必要に応じて追加
+    for file in site_files:
+        if os.path.exists(file):
+            shutil.copy(file, "public/")
+            
+    # データと記事をコピー
+    shutil.copy("data/questions.json", "public/data/questions.json")
+    if os.path.exists("posts"):
+        for f in os.listdir("posts"):
+            if f.endswith(".md"):
+                shutil.copy(os.path.join("posts", f), "public/posts/")
+
+    print(f"完了確認: public フォルダにサイト用ファイルをまとめました。")
 
 if __name__ == "__main__":
     main()
