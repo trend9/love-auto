@@ -1,0 +1,146 @@
+:root {
+    --main-gradient: linear-gradient(135deg, #fff5f7 0%, #f3e5f5 100%);
+    --accent-color: #d1a3ff;
+    --text-color: #4a4a4a;
+    --white: #ffffff;
+    --star-color: #ffcf40;
+}
+
+body {
+    background: var(--main-gradient);
+    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    color: var(--text-color);
+    margin: 0;
+    line-height: 1.6;
+    padding-bottom: 120px;
+}
+
+header {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 40px 20px;
+    text-align: center;
+    border-bottom: 2px solid #fce4ec;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    color: #8e44ad;
+    letter-spacing: 0.1em;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.site-intro {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    margin-bottom: 40px;
+    border: 1px solid #f3e5f5;
+}
+
+.post-card {
+    background: var(--white);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    transition: all 0.2s;
+    border-left: 5px solid var(--accent-color);
+    text-decoration: none;
+    display: block;
+}
+
+.post-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(209, 163, 255, 0.3);
+}
+
+.post-card .date { font-size: 0.8rem; color: #bbb; }
+.post-card .title { font-weight: bold; color: var(--text-color); display: block; margin-top: 5px; }
+
+/* プロフィールページ専用画像サイズ */
+.profile-image-large {
+    width: 150px;
+    height: auto;
+    margin: 0 auto 20px;
+    display: block;
+    filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));
+}
+
+/* --- PC用：右下の立ち絵（yui.png） --- */
+.yui-pc-fixed {
+    position: fixed;
+    bottom: 0;
+    right: 20px;
+    height: 80vh; /* 画面の高さの70%に制限して見切れを防止 */
+    max-height: 800px; /* 大きすぎないように上限を設定 */
+    z-index: 2000;
+    pointer-events: none;
+    display: block;
+}
+
+.yui-pc-fixed img {
+    height: 100%;
+    width: auto;
+    display: block;
+    filter: drop-shadow(-10px 0 20px rgba(0,0,0,0.1));
+    pointer-events: auto;
+}
+
+/* 吹き出し：画像の高さに連動して頭上に配置 */
+.yui-bubble {
+    position: absolute;
+    bottom: calc(100% + 15px); /* 画像の高さのすぐ上に配置 */
+    right: 50px;
+    background: white;
+    padding: 15px 20px;
+    border-radius: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    font-size: 0.9rem;
+    width: 200px;
+    border: 2px solid var(--accent-color);
+    z-index: 2001;
+    pointer-events: auto;
+}
+
+.yui-bubble::after {
+    content: "";
+    position: absolute;
+    bottom: -10px;
+    right: 50px;
+    border-width: 10px 10px 0;
+    border-style: solid;
+    border-color: white transparent transparent;
+}
+
+/* --- モバイル用：右下のちびキャラ（yuichibi.png） --- */
+.yui-chibi-fixed {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 80px;
+    z-index: 2000;
+    display: none;
+}
+
+.yui-chibi-fixed img {
+    width: 100%;
+    filter: drop-shadow(0 5px 10px rgba(0,0,0,0.2));
+}
+
+/* --- レスポンシブ切り替え --- */
+@media (max-width: 1024px) {
+    .yui-pc-fixed { display: none; }
+    .yui-chibi-fixed { display: block; }
+}
+
+@media (max-width: 768px) {
+    header h1 { font-size: 1.3rem; }
+    .yui-chibi-fixed { width: 70px; bottom: 15px; right: 15px; }
+}
