@@ -33,6 +33,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Update consulting data [skip ci]" || echo "No changes to commit"
-          git push origin main --force # ← ここを修正
+          # 確実に全ての変更（jsonとmd）をステージングする
+          git add data/questions.json posts/*.md
+          # 変更がある場合のみコミットし、強制的にメインブランチへ送る
+          git commit -m "Update: Added new questions and posts [skip ci]" || echo "No changes to commit"
+          git push origin main --force
