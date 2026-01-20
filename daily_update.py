@@ -7,111 +7,103 @@ import time
 from datetime import datetime
 from llama_cpp import Llama
 
-# ユーザー指定の「恋愛」キーワードで広範囲に取得するURL
+# 【解決】知恵袋の404を回避し、確実に取れる最新の検索・カテゴリフィード
 RSS_URLS = [
-    "https://news.google.com/rss/search?q=%E6%81%8B%E6%84%9B+when:1d&hl=ja&gl=JP&ceid=JP:ja"
+    # 知恵袋：恋愛相談カテゴリの最新（新しいRSS生成パラメータ）
+    "https://chiebukuro.yahoo.co.jp/rss/category/2078297875",
+    # 知恵袋：キーワード「悩み」の最新検索結果
+    "https://chiebukuro.yahoo.co.jp/rss/search?p=%E6%81%8B%E6%84%9B+%E6%82%A9%E3%81%BF&flg=3",
+    # Googleニュース：恋愛相談の悩み（バックアップ用）
+    "https://news.google.com/rss/search?q=%E6%81%8B%E6%84%9B%E7%9B%B8%E8%AB%87+%E6%82%A9%E3%81%BF+when:1d&hl=ja&gl=JP&ceid=JP:ja"
 ]
 
 MODEL_PATH = "./models/model.gguf"
-BATCH_SIZE = 1 # 今回は多めに15件を目標にします
+BATCH_SIZE = 1 # 毎日10件ずつ追加
 
 def generate_answer(question):
     print(f"回答を生成中: {question[:30]}...")
     try:
-        if not os.path.exists(MODEL_PATH):
-            return "モデルが見つからないため、回答できませんでした。"
+        if not os.path.exists(MODEL_PATH): return "モデル読み込み失敗"
         llm = Llama(model_path=MODEL_PATH, n_ctx=2048, verbose=False)
-        # 結姉さんのキャラクターを維持し、PRを徹底排除
-        prompt = f"あなたは包容力のある年上の女性『結（ゆい）姉さん』です。以下の恋愛に関するニュースや相談に対して、親身にアドバイスしてください。PRやURLは一切含めないでください。\n\n内容: {question}\n\n結姉さんの回答:"
+        prompt = f"あなたは包容力のある年上の女性『結（ゆい）姉さん』です。以下の悩みに対し、親身にアドバイスしてください。\n\n内容: {question}\n\n結姉さんの回答:"
         output = llm(prompt, max_tokens=1000, stop=["内容:"], echo=False)
         return output['choices'][0]['text']
     except Exception as e:
-        return f"エラーが発生しました。: {str(e)}"
+        return f"AIエラー: {str(e)}"
 
 def main():
-    print("Pythonプログラムを開始します（Googleニュース恋愛特化モード）...")
+    print("Pythonプログラムを開始します（知恵袋優先・SEO蓄積モード）...")
     
-    os.makedirs("posts", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
-    os.makedirs("public/data", exist_ok=True)
-    os.makedirs("public/posts", exist_ok=True)
+    # 必要なフォルダをすべて作成
+    for d in ["posts", "data", "public/data", "public/posts"]:
+        os.makedirs(d, exist_ok=True)
 
-    questions_data = []
+    # 既存データの読み込み（全履歴を読み込んで保持する）
+    all_questions = []
     if os.path.exists("data/questions.json"):
         with open("data/questions.json", "r", encoding="utf-8") as f:
             try:
-                questions_data = json.load(f)
+                all_questions = json.load(f)
             except:
-                questions_data = []
+                all_questions = []
 
+    # 取得開始
     feed = None
     for url in RSS_URLS:
-        print(f"ニュースを取得中: {url}")
-        temp_feed = feedparser.parse(url, agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-        
-        if hasattr(temp_feed, 'entries') and len(temp_feed.entries) > 0:
-            print(f"成功！{len(temp_feed.entries)}件のネタを捕捉しました。")
-            feed = temp_feed
+        print(f"フィード試行中: {url}")
+        f = feedparser.parse(url, agent='Mozilla/5.0')
+        if f.entries:
+            print(f"成功！{len(f.entries)}件取得しました。")
+            feed = f
             break
+        time.sleep(1)
 
     if feed and feed.entries:
         new_count = 0
         for entry in feed.entries:
-            # 重複チェック
-            if any(q['title'] == entry.title for q in questions_data):
+            # 重複チェック（タイトルで判定）
+            if any(q['title'] == entry.title for q in all_questions):
                 continue
             
-            if new_count >= BATCH_SIZE:
-                break
+            if new_count >= BATCH_SIZE: break
 
-            print(f"記事生成 {new_count + 1}/{BATCH_SIZE}: {entry.title}")
+            print(f"新着を処理: {entry.title}")
             date_str = datetime.now().strftime("%Y%m%d")
             time_suffix = datetime.now().strftime("%H%M%S")
             filename = f"posts/{date_str}_{new_count}_{time_suffix}.md"
             
-            # ニュースのタイトルと本文を組み合わせて相談内容とする
-            query_text = f"タイトル: {entry.title}\n内容: {getattr(entry, 'summary', '')}"
+            # 知恵袋の本文またはタイトルを取得
+            query_text = getattr(entry, 'summary', entry.title)
             answer = generate_answer(query_text)
             
-            # Markdown作成（PR排除）
-            content = f"# {entry.title}\n\n## 相談内容（ニュース）\n{query_text}\n\n## 結姉さんの回答\n{answer}"
+            # Markdownとして保存
+            content = f"# {entry.title}\n\n## 相談内容\n{query_text}\n\n## 結姉さんの回答\n{answer}"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(content)
             
-            # JSON用データ
-            questions_data.insert(0, {
+            # リストの先頭に追加（最新が一番上）
+            all_questions.insert(0, {
                 "title": entry.title,
                 "file": filename,
                 "date": datetime.now().strftime("%Y/%m/%d")
             })
             new_count += 1
         
-        if new_count > 0:
-            # 最新100件を保持
-            with open("data/questions.json", "w", encoding="utf-8") as f:
-                json.dump(questions_data[:100], f, ensure_ascii=False, indent=4)
-            print(f"【大成功】{new_count}件の記事を生成・蓄積しました！")
-        else:
-            print("新しいネタが見つかりませんでした。")
-    else:
-        print("ニュースの取得に失敗しました。")
+        # questions.json を全履歴含めて保存
+        with open("data/questions.json", "w", encoding="utf-8") as f:
+            json.dump(all_questions, f, ensure_ascii=False, indent=4)
+        print(f"累計記事数: {len(all_questions)}件（今回 {new_count}件追加）")
 
-    # 公開用 public フォルダの同期（画像も含めて確実に！）
-    print("公開用ファイルを public フォルダに同期中...")
+    # 全ファイルを public フォルダに同期
     base_files = ["index.html", "post.html", "style.css", "yui.png", "chibi.png"]
     for f in base_files:
-        if os.path.exists(f):
-            shutil.copy(f, "public/")
+        if os.path.exists(f): shutil.copy(f, "public/")
     
-    if os.path.exists("data/questions.json"):
-        shutil.copy("data/questions.json", "public/data/questions.json")
-    
+    shutil.copy("data/questions.json", "public/data/questions.json")
     if os.path.exists("posts"):
         for f in os.listdir("posts"):
-            if f.endswith(".md"):
-                shutil.copy(os.path.join("posts", f), "public/posts/")
-
-    print("SUCCESS: サイト更新の準備が整いました。")
+            shutil.copy(os.path.join("posts", f), "public/posts/")
+    print("SUCCESS: 公開用データの準備完了。")
 
 if __name__ == "__main__":
     main()

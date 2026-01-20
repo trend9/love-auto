@@ -23,8 +23,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install feedparser llama-cpp-python
+        run: pip install feedparser llama-cpp-python
 
       - name: Download AI Model
         run: |
@@ -32,24 +31,19 @@ jobs:
           curl -L -o models/model.gguf https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
 
       - name: Run daily update
-        run: |
-          mkdir -p public/data public/posts
-          python daily_update.py
+        run: python daily_update.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # publicの中身をルートにコピーして保存
+          # publicの内容をリポジトリのルートに同期（アーカイブ保存）
           cp -r public/* .
-          
           git add data/questions.json posts/*.md index.html post.html style.css *.png
-          git commit -m "Update: AI generated content [skip ci]" || echo "No changes"
+          git commit -m "Update: Archive persistent posts [skip ci]" || echo "No changes"
           git push origin main --force
 
-      - name: Prepare Deployment Directory
-        # 公開専用の「軽量フォルダ」を最後に作り直す
+      - name: Prepare Site Artifact
         run: |
           mkdir -p _site/data _site/posts
           cp index.html post.html style.css *.png _site/
@@ -59,7 +53,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # modelsを含まない軽量な _site フォルダだけを公開！
           path: '_site'
 
       - name: Deploy to GitHub Pages
