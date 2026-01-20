@@ -41,18 +41,26 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 【重要】publicの中身をルートにコピーして、サイトの「正解」を更新する
+          # publicの中身をルートにコピーして保存
           cp -r public/* .
           
           git add data/questions.json posts/*.md index.html post.html style.css *.png
-          git commit -m "Update: AI generated content and sync site files [skip ci]" || echo "No changes"
+          git commit -m "Update: AI generated content [skip ci]" || echo "No changes"
           git push origin main --force
+
+      - name: Prepare Deployment Directory
+        # 公開専用の「軽量フォルダ」を最後に作り直す
+        run: |
+          mkdir -p _site/data _site/posts
+          cp index.html post.html style.css *.png _site/
+          cp data/questions.json _site/data/
+          cp -r posts/* _site/posts/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # ルート全体を公開対象にする
-          path: '.'
+          # modelsを含まない軽量な _site フォルダだけを公開！
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
