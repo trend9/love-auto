@@ -6,47 +6,56 @@
     <title>結姉さんの回答 - AI恋愛相談室</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        #post-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            line-height: 1.8;
+        }
+        #post-content h1 { color: #d63384; border-left: 5px solid #d63384; padding-left: 15px; margin-bottom: 30px; }
+        #post-content h2 { color: #555; background: #fff0f5; padding: 10px; border-radius: 5px; }
+        .back-link { text-align: center; margin: 40px 0; }
+        .back-link a { background: #d63384; color: white; padding: 10px 25px; text-decoration: none; border-radius: 25px; }
+    </style>
 </head>
 <body>
-    <header>
-        <div class="header-content">
-            <a href="index.html" style="text-decoration:none; color:white;">
-                <img src="yui.png" alt="結姉さん" class="yui-icon">
-                <span>結姉さんのAI恋愛相談室</span>
-            </a>
-        </div>
+    <header style="background: #d63384; color: white; padding: 10px 0; text-align: center;">
+        <a href="index.html" style="color: white; text-decoration: none; font-weight: bold;">← トップへ戻る</a>
     </header>
 
     <main>
         <article id="post-content">
-            <p>記事を読み込んでいます...</p>
+            <p>相談内容を読み込んでいます...</p>
         </article>
-        <div style="text-align:center; margin-top:30px;">
-            <a href="index.html" class="btn">トップへ戻る</a>
+        <div class="back-link">
+            <a href="index.html">他のお悩みを見る</a>
         </div>
     </main>
 
-    <footer>
+    <footer style="text-align: center; padding: 20px; color: #888;">
         <p>&copy; 2026 結姉さんのAI恋愛相談室</p>
     </footer>
 
     <script>
-        // URLパラメータ ?file=posts/xxxx.md を取得
         const params = new URLSearchParams(window.location.search);
         const filePath = params.get('file');
 
         if (filePath) {
-            fetch(filePath)
+            // キャッシュを避けてMarkdownを取得
+            fetch(filePath + '?v=' + new Date().getTime())
                 .then(response => {
-                    if (!response.ok) throw new Error('記事が見つかりません');
+                    if (!response.ok) throw new Error('記事ファイルが見つかりません: ' + filePath);
                     return response.text();
                 })
                 .then(markdown => {
-                    // MarkdownをHTMLに変換して表示
+                    // MarkdownをHTMLに変換
                     document.getElementById('post-content').innerHTML = marked.parse(markdown);
                 })
                 .catch(err => {
-                    document.getElementById('post-content').innerHTML = `<p>エラー: ${err.message}</p>`;
+                    console.error(err);
+                    document.getElementById('post-content').innerHTML = `<h2>申し訳ありません</h2><p>記事の読み込みに失敗しました。</p><p><small>${err.message}</small></p>`;
                 });
         } else {
             document.getElementById('post-content').innerHTML = '<p>記事が指定されていません。</p>';

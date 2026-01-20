@@ -4,72 +4,112 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>結姉さんのAI恋愛相談室</title>
-    <meta name="description" content="結姉さんがあなたの恋愛の悩みにAIで親身に回答します。">
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* レイアウト崩れを強制的に直す追加スタイル */
+        #question-list {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+        }
+        .question-item {
+            background: #fff;
+            border-bottom: 1px dashed #ffc0cb;
+            padding: 15px;
+            transition: 0.3s;
+        }
+        .question-item:hover {
+            background: #fff5f7;
+        }
+        .question-item a {
+            text-decoration: none;
+            color: #d63384;
+            font-weight: bold;
+            display: block;
+        }
+        .date-tag {
+            font-size: 0.8em;
+            color: #999;
+            margin-bottom: 5px;
+            display: block;
+        }
+        .archive-info {
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
     <header>
-        <div class="header-content">
-            <img src="yui.png" alt="結姉さん" class="yui-icon">
-            <h1>結姉さんのAI恋愛相談室</h1>
+        <div class="header-content" style="display: flex; align-items: center; justify-content: center; padding: 20px;">
+            <img src="yui.png" alt="結姉さん" class="yui-icon" style="width: 60px; height: 60px; border-radius: 50%; margin-right: 15px;">
+            <h1 style="margin: 0; font-size: 1.5rem;">結姉さんのAI恋愛相談室</h1>
         </div>
     </header>
 
-    <main>
-        <section id="hero">
-            <h2>最近届いたお悩み相談</h2>
+    <main style="max-width: 800px; margin: 0 auto; padding: 20px;">
+        <section id="hero" style="text-align: center; margin-bottom: 30px;">
+            <h2 style="color: #d63384; border-bottom: 2px solid #ffc0cb; display: inline-block; padding-bottom: 5px;">最近届いたお悩み相談</h2>
         </section>
 
         <section id="archive-section">
-            <ul id="question-list">
-                </ul>
+            <div id="question-list">
+                <p id="loading-msg">相談を読み込んでいます...</p>
+            </div>
         </section>
 
-        <section id="character-info">
-            <img src="chibi.png" alt="ちび結" class="chibi-icon">
+        <section id="character-info" style="margin-top: 50px; display: flex; align-items: center; background: #fff0f5; padding: 20px; border-radius: 15px;">
+            <img src="chibi.png" alt="ちび結" class="chibi-icon" style="width: 80px; margin-right: 20px;">
             <div class="bubble">
-                <p>過去のお悩みも全部ここに残していくわ。あなたの悩みと似ている解決策が見つかるかもしれないわね。</p>
+                <p style="margin: 0;">過去のお悩みも全部ここに残していくわ。あなたの悩みと似ている誰かの解決策が見つかるかもしれないわね。</p>
             </div>
         </section>
     </main>
 
-    <footer>
+    <footer style="text-align: center; padding: 30px; color: #888;">
         <p>&copy; 2026 結姉さんのAI恋愛相談室</p>
     </footer>
 
     <script>
-        fetch('data/questions.json')
-            .then(response => response.json())
+        // キャッシュ回避のためにランダムな数値を付けてJSONを取得
+        fetch('data/questions.json?v=' + new Date().getTime())
+            .then(response => {
+                if (!response.ok) throw new Error('JSONが見つかりません');
+                return response.json();
+            })
             .then(data => {
                 const list = document.getElementById('question-list');
+                list.innerHTML = ''; // ローディングメッセージを消去
+
                 if (!data || data.length === 0) {
-                    list.innerHTML = '<li>現在、新しいお悩みを準備中です。</li>';
+                    list.innerHTML = '<p>現在、新しいお悩みを準備中です。</p>';
                     return;
                 }
 
                 // 最新20件を表示
                 const recent = data.slice(0, 20);
                 recent.forEach(q => {
-                    const li = document.createElement('li');
-                    li.style.listStyle = "none";
-                    li.style.marginBottom = "15px";
-                    // 日付とタイトルを表示。リンク先は post.html?file=パス
-                    li.innerHTML = `
-                        <span style="font-size:0.8em; color:#888;">${q.date}</span><br>
-                        <a href="post.html?file=${q.file}" style="text-decoration:none; color:#d63384; font-weight:bold;">${q.title}</a>
+                    const item = document.createElement('div');
+                    item.className = 'question-item';
+                    item.innerHTML = `
+                        <span class="date-tag">${q.date}</span>
+                        <a href="post.html?file=${q.file}">${q.title}</a>
                     `;
-                    list.appendChild(li);
+                    list.appendChild(item);
                 });
 
                 if (data.length > 20) {
-                    const moreMsg = document.createElement('p');
-                    moreMsg.innerHTML = `<small>他、全${data.length}件の相談がアーカイブされています</small>`;
-                    list.after(moreMsg);
+                    const info = document.createElement('p');
+                    info.className = 'archive-info';
+                    info.innerText = `他、全${data.length}件の相談がアーカイブされています`;
+                    list.appendChild(info);
                 }
             })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('question-list').innerHTML = '<li>読み込みエラーが発生しました</li>';
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('question-list').innerHTML = '<p>データの読み込みに失敗しました。時間をおいて再度お試しください。</p>';
             });
     </script>
 </body>
