@@ -58,20 +58,19 @@ def main():
         json.dump(questions_data[:50], f, ensure_ascii=False, indent=4)
     
     # --- 公開用フォルダ (public) へのコピー ---
-    # models フォルダ以外をすべて public に集める
-    site_files = ["index.html", "post.html", "style.css"] # 必要に応じて追加
-    for file in site_files:
-        if os.path.exists(file):
-            shutil.copy(file, "public/")
+    # 1. 基本ファイルをコピー
+    for f in ["index.html", "post.html", "style.css", "yui.png", "chibi.png"]:
+        if os.path.exists(f):
+            shutil.copy(f, "public/")
             
-    # データと記事をコピー
+    # 2. データと記事をコピー
     shutil.copy("data/questions.json", "public/data/questions.json")
     if os.path.exists("posts"):
         for f in os.listdir("posts"):
             if f.endswith(".md"):
                 shutil.copy(os.path.join("posts", f), "public/posts/")
 
-    print(f"完了確認: public フォルダにサイト用ファイルをまとめました。")
+    print(f"完了: publicフォルダに全ての資産を配置しました。")
 
 if __name__ == "__main__":
     main()
