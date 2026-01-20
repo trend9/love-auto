@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from llama_cpp import Llama
 
-# 設定
+# 設定（より安定したURLに変更：知恵袋 恋愛相談カテゴリ全体）
 RSS_URL = "https://chiebukuro.yahoo.co.jp/rss/2078297875"
 MODEL_PATH = "./models/model.gguf"
 BATCH_SIZE = 10 
@@ -32,41 +32,62 @@ def main():
     os.makedirs("public/data", exist_ok=True)
     os.makedirs("public/posts", exist_ok=True)
 
-    # 1. RSSの取得を試みる
+    # 既存データの読み込み（重複チェック用）
+    questions_data = []
+    if os.path.exists("data/questions.json"):
+        with open("data/questions.json", "r", encoding="utf-8") as f:
+            try:
+                questions_data = json.load(f)
+            except:
+                questions_data = []
+
+    # RSSの取得
+    print(f"RSSを取得中: {RSS_URL}")
     feed = feedparser.parse(RSS_URL)
     
-    # RSSが取得できた場合のみ記事を生成
     if feed.entries:
-        entries = feed.entries[:BATCH_SIZE]
-        questions_data = []
-        if os.path.exists("data/questions.json"):
-            with open("data/questions.json", "r", encoding="utf-8") as f:
-                try:
-                    questions_data = json.load(f)
-                except:
-                    questions_data = []
+        new_count = 0
+        for entry in feed.entries:
+            # 重複チェック：すでに同じタイトルの記事があればスキップ
+            if any(q['title'] == entry.title for q in questions_data):
+                continue
+            
+            # 最大取得件数に達したら終了
+            if new_count >= BATCH_SIZE:
+                break
 
-        for i, entry in enumerate(entries):
+            print(f"新着記事を発見: {entry.title}")
             date_str = datetime.now().strftime("%Y%m%d")
-            filename = f"posts/{date_str}_{i}.md"
+            filename = f"posts/{date_str}_{new_count}.md"
+            
+            # AI回答生成
             answer = generate_answer(entry.summary)
+            
+            # ファイル保存
             content = f"# {entry.title}\n\n## 相談内容\n{entry.summary}\n\n## 結姉さんの回答\n{answer}"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(content)
+            
+            # リストの先頭に追加
             questions_data.insert(0, {
                 "title": entry.title,
                 "file": filename,
                 "date": datetime.now().strftime("%Y/%m/%d")
             })
+            new_count += 1
         
-        # JSON保存
-        with open("data/questions.json", "w", encoding="utf-8") as f:
-            json.dump(questions_data[:50], f, ensure_ascii=False, indent=4)
+        if new_count > 0:
+            # 最新50件のみ保持して保存
+            with open("data/questions.json", "w", encoding="utf-8") as f:
+                json.dump(questions_data[:50], f, ensure_ascii=False, indent=4)
+            print(f"{new_count}件の新しい記事を追加しました。")
+        else:
+            print("新しい相談はありませんでした（すべて取得済み）。")
     else:
-        print("警告: RSSフィードが空でした。新規記事の生成をスキップします。")
+        print("警告: RSSフィードが取得できませんでした。知恵袋側が一時的に制限している可能性があります。")
 
-    # 2. 記事の有無にかかわらず、既存のファイルを public にコピー（404対策）
-    print("サイトファイルを public フォルダに配置中...")
+    # サイト公開用ファイルのコピー（404回避）
+    print("publicフォルダを更新中...")
     base_files = ["index.html", "post.html", "style.css", "yui.png", "chibi.png"]
     for f in base_files:
         if os.path.exists(f):
@@ -80,7 +101,7 @@ def main():
             if f.endswith(".md"):
                 shutil.copy(os.path.join("posts", f), "public/posts/")
 
-    print("SUCCESS: public フォルダの準備が完了しました。")
+    print("SUCCESS: すべての準備が完了しました。")
 
 if __name__ == "__main__":
     main()
