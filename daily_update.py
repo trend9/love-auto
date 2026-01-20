@@ -1,56 +1,65 @@
 import feedparser
 import os
-import re
-from llama_cpp import Llama
+import json
 from datetime import datetime
+from llama_cpp import Llama
 
-# 1. フォルダを確実に作成する
-POSTS_DIR = "posts"
-os.makedirs(POSTS_DIR, exist_ok=True)
+# 設定
+RSS_URL = "https://chiebukuro.yahoo.co.jp/rss/2078297875" # 恋愛相談カテゴリ
+MODEL_PATH = "./models/model.gguf"
+BATCH_SIZE = 10  # 一度に10個生成する
 
-# 2. AIモデルのロード
-print("AIモデルを読み込み中...")
-try:
-    llm = Llama(
-        model_path="./models/model.gguf",
-        n_ctx=512,
-        n_threads=2
-    )
-except Exception as e:
-    print(f"モデルのロードに失敗: {e}")
-    exit(1)
+def generate_answer(question):
+    print(f"回答を生成中: {question[:30]}...")
+    llm = Llama(model_path=MODEL_PATH, n_ctx=2048)
+    prompt = f"あなたは包容力のある年上の女性『結（ゆい）姉さん』です。以下の恋愛相談に、優しく、時には厳しく、親身に回答してください。PRやURLは一切含めないでください。\n\n相談内容: {question}\n\n回答:"
+    output = llm(prompt, max_tokens=1000, stop=["相談内容:"], echo=False)
+    return output['choices'][0]['text']
 
-# 3. 知恵袋RSSから悩み取得
-RSS_URL = "https://chiebukuro.yahoo.co.jp/rss/2078297875/all.xml"
-feed = feedparser.parse(RSS_URL)
+def main():
+    if not os.path.exists(MODEL_PATH):
+        print(f"モデルが見つかりません: {MODEL_PATH}")
+        return
 
-if not feed.entries:
-    print("RSSからデータを取得できませんでした。")
-    # テスト用にダミー記事を作成（空エラーを避けるため）
-    feed.entries = [type('obj', (object,), {'title': 'テスト相談', 'summary': 'マッチングアプリで返信が来ない！', 'link': 'https://example.com'})]
-
-def generate_ai_answer(question_text):
-    prompt = f"### System: あなたは親身な恋愛アドバイザー「あねご」です。関西弁で短く答えて。最後にアプリを勧めて。\n### User: {question_text}\n### Assistant:"
-    output = llm(prompt, max_tokens=200, stop=["###"])
-    return output['choices'][0]['text'].strip()
-
-# 記事の生成
-count = 0
-for entry in feed.entries[:10]:
-    title = entry.title
-    clean_title = re.sub(r'[\\/:*?"<>|]', '', title)[:20]
-    filename = os.path.join(POSTS_DIR, f"{datetime.now().strftime('%Y%m%d')}_{count}.md")
+    feed = feedparser.parse(RSS_URL)
+    entries = feed.entries[:BATCH_SIZE]
     
-    print(f"記事作成中: {title}")
-    answer = generate_ai_answer(entry.summary)
+    os.makedirs("posts", exist_ok=True)
+    os.makedirs("data", exist_ok=True)
     
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(f"# {title}\n\n")
-        f.write(f"## 相談内容\n{entry.summary}\n\n")
-        f.write(f"## あねごのアドバイス\n{answer}\n\n")
-        f.write(f"---\n[元の相談を詳しく見る]({entry.link})\n")
-        f.write("\n\n---\n**【PR】今の恋に行き詰まったら、心機一転マッチングアプリで探そ！**\n")
-        f.write("[おすすめのアプリ一覧はこちら](https://your-link.com)")
-    count += 1
+    questions_data = []
+    # 既存のデータを読み込む
+    if os.path.exists("data/questions.json"):
+        with open("data/questions.json", "r", encoding="utf-8") as f:
+            questions_data = json.load(f)
 
-print(f"{count}件の記事を作成しました。")
+    for i, entry in enumerate(entries):
+        date_str = datetime.now().strftime("%Y%m%d")
+        filename = f"posts/{date_str}_{i}.md"
+        
+        # 既に同じ質問があるかチェック（重複回避）
+        if any(q['title'] == entry.title for q in questions_data):
+            continue
+
+        answer = generate_answer(entry.summary)
+        
+        # Markdownファイル作成（PRや元リンクを排除）
+        content = f"# {entry.title}\n\n## 相談内容\n{entry.summary}\n\n## 結姉さんの回答\n{answer}"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        # データを蓄積
+        questions_data.insert(0, {
+            "title": entry.title,
+            "file": filename,
+            "date": datetime.now().strftime("%Y/%m/%d")
+        })
+
+    # 最新の20件だけ保持
+    with open("data/questions.json", "w", encoding="utf-8") as f:
+        json.dump(questions_data[:50], f, ensure_ascii=False, indent=4)
+
+    print(f"{len(entries)}件の更新が完了しました。")
+
+if __name__ == "__main__":
+    main()
