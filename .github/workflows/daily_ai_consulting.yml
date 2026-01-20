@@ -23,7 +23,8 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install feedparser llama-cpp-python
+        run: |
+          pip install feedparser llama-cpp-python
 
       - name: Download AI Model
         run: |
@@ -31,21 +32,29 @@ jobs:
           curl -L -o models/model.gguf https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
 
       - name: Run daily update
-        run: python daily_update.py
+        run: |
+          # Pythonを実行して、ここで public フォルダを生成させる
+          python daily_update.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 全ての変更（publicフォルダ含む）を強制的に追加
-          git add data/questions.json posts/*.md public/
-          git commit -m "Update: Sync public files and posts [skip ci]" || echo "No changes"
+          
+          # data と posts が更新されているか確認して追加
+          git add data/questions.json posts/*.md
+          
+          # public フォルダが存在する場合のみ追加（エラー回避）
+          if [ -d "public" ]; then
+            git add public/
+          fi
+          
+          git commit -m "Update: AI generated content [skip ci]" || echo "No changes"
           git push origin main --force
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # ここがポイント！publicフォルダ（数MB）だけを公開対象にする
           path: './public'
 
       - name: Deploy to GitHub Pages
