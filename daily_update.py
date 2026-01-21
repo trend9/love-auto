@@ -1,7 +1,10 @@
-import os, json, re, random
+import os, json, re
 from datetime import datetime
 from llama_cpp import Llama
 
+# =====================
+# CONFIG
+# =====================
 MODEL_PATH = "./models/model.gguf"
 GENERATE_COUNT = 5
 MAX_RETRY = 3
@@ -9,40 +12,47 @@ MAX_RETRY = 3
 ANSWER_MIN = 100
 ANSWER_MAX = 200
 
-# -------------------------
-# Utility
-# -------------------------
+# =====================
+# UTILS
+# =====================
 
 def clean(text):
     if not text:
         return ""
-    text = re.sub(r'[<>#*\[\]]', '', text)
-    return text.strip()
+    return re.sub(r'[<>#*\[\]]', '', text).strip()
 
 def extract(label, text):
     m = re.search(rf"{label}[：:]\s*(.*?)(?=\n\d\.|$)", text, re.S)
     return clean(m.group(1)) if m else ""
 
-def char_len(text):
-    return len(text)
+def normalize_answer(text):
+    if len(text) > ANSWER_MAX:
+        return text[:ANSWER_MAX].rstrip("。") + "。"
+    if len(text) < ANSWER_MIN:
+        return text + " 焦らず、自分の気持ちを大切にしてみてね。"
+    return text
 
-# -------------------------
-# Theme Generation
-# -------------------------
+# =====================
+# LOAD PAST DATA
+# =====================
 
-def load_recent_themes(limit=20):
+def load_recent_titles(limit=20):
     path = "data/questions.json"
     if not os.path.exists(path):
         return []
     with open(path, "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
+            return [q["title"] for q in data[:limit]]
         except:
             return []
-    return [q["title"] for q in data[:limit]]
+
+# =====================
+# THEME GENERATION
+# =====================
 
 def generate_themes(llm, avoid_titles, count):
-    avoid_text = " / ".join(avoid_titles[:10])
+    avoid = " / ".join(avoid_titles[:10])
 
     prompt = f"""System:
 あなたは恋愛相談サイトの編集者です。
@@ -52,12 +62,11 @@ User:
 これらと被らない「恋愛相談テーマ」を {count} 個考えてください。
 
 最近のタイトル:
-{avoid_text}
+{avoid}
 
 条件:
-・短い名詞句
-・日本語
-・重複禁止
+・短い日本語
+・重複しない
 ・番号付きで出力
 
 Assistant:
@@ -74,20 +83,20 @@ Assistant:
     themes = re.findall(r'\d+\.\s*(.+)', out)
     return themes[:count]
 
-# -------------------------
-# AI Article Generation
-# -------------------------
+# =====================
+# ARTICLE GENERATION
+# =====================
 
 def generate_article(llm, theme):
     prompt = f"""System:
 あなたは35歳の日本人女性「ゆい姉さん」です。
-恋愛相談に慣れており、優しく現実的に答えます。
+恋愛相談に慣れていて、優しく現実的に答えます。
 
 User:
 以下のテーマで恋愛相談記事を作ってください。
 テーマ: {theme}
 
-形式を必ず守ってください。
+必ず次の形式で出力してください。
 
 1.ラジオネーム:
 2.SEOタイトル:
@@ -107,7 +116,7 @@ Assistant:
         stop=["6."]
     )["choices"][0]["text"]
 
-    data = {
+    return {
         "radio_name": extract("1.ラジオネーム", out),
         "seo_title": extract("2.SEOタイトル", out),
         "letter": extract("3.相談文", out),
@@ -115,28 +124,26 @@ Assistant:
         "description": extract("5.メタディスクリプション", out),
     }
 
-    return data
-
 def validate_article(data):
-    if len(data["seo_title"]) < 8:
+    if not data["seo_title"]:
         return False
-    if len(data["letter"]) < 50:
+    if len(data["letter"]) < 30:
         return False
-    alen = char_len(data["answer"])
-    if alen < ANSWER_MIN or alen > ANSWER_MAX:
+    if len(data["answer"]) < 80:
         return False
     return True
 
-# -------------------------
-# Save & Update
-# -------------------------
+# =====================
+# SAVE / UPDATE FILES
+# =====================
 
 def save_article(data, template):
     os.makedirs("posts", exist_ok=True)
+
     now = datetime.now()
     stamp = now.strftime("%Y%m%d_%H%M%S")
     display_date = now.strftime("%Y/%m/%d %H:%M")
-    filename = f"posts/{stamp}.html"
+    path = f"posts/{stamp}.html"
 
     html = (
         template
@@ -148,17 +155,17 @@ def save_article(data, template):
         .replace("{{DATE}}", display_date)
     )
 
-    with open(filename, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
     return {
         "title": data["seo_title"],
-        "url": filename,
+        "url": path,
         "date": display_date,
         "description": data["description"]
     }
 
-def update_json(new_items):
+def update_json(items):
     os.makedirs("data", exist_ok=True)
     path = "data/questions.json"
     db = []
@@ -170,7 +177,7 @@ def update_json(new_items):
             except:
                 pass
 
-    db = new_items + db
+    db = items + db
     db = db[:1000]
 
     with open(path, "w", encoding="utf-8") as f:
@@ -220,12 +227,13 @@ def update_archive(db):
     with open("archive.html", "w", encoding="utf-8") as f:
         f.write(html)
 
-# -------------------------
-# Main
-# -------------------------
+# =====================
+# MAIN
+# =====================
 
 def main():
     if not os.path.exists(MODEL_PATH):
+        print("MODEL NOT FOUND")
         return
 
     llm = Llama(model_path=MODEL_PATH, n_ctx=1024, verbose=False)
@@ -233,7 +241,7 @@ def main():
     with open("post_template.html", "r", encoding="utf-8") as f:
         template = f.read()
 
-    recent_titles = load_recent_themes()
+    recent_titles = load_recent_titles()
     themes = generate_themes(llm, recent_titles, GENERATE_COUNT)
 
     new_items = []
@@ -242,14 +250,21 @@ def main():
         for _ in range(MAX_RETRY):
             data = generate_article(llm, theme)
             if validate_article(data):
+                data["answer"] = normalize_answer(data["answer"])
                 item = save_article(data, template)
                 new_items.append(item)
                 break
 
-    if new_items:
-        db = update_json(new_items)
-        update_index(db)
-        update_archive(db)
+    # 最低1件は必ず出す保険
+    if not new_items:
+        data = generate_article(llm, themes[0])
+        data["answer"] = normalize_answer(data["answer"])
+        item = save_article(data, template)
+        new_items.append(item)
+
+    db = update_json(new_items)
+    update_index(db)
+    update_archive(db)
 
 if __name__ == "__main__":
     main()
