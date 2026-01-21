@@ -5,54 +5,42 @@
     <title>結姉さんの相談室</title>
     <link rel="stylesheet" href="style.css">
     <style>
+        body { margin: 0; padding: 0; background-color: #fff9fb; font-family: sans-serif; }
         .site-wrapper { display: grid; grid-template-columns: 300px 1fr 300px; gap: 20px; max-width: 1400px; margin: 0 auto; }
-        /* 左サイドバー */
-        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; }
+        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; min-height: 100vh; }
         .yui-word { background: #fff0f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; border: 1px dashed #d63384; }
-        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #eee; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        
-        /* 中央メイン */
-        main { background: white; padding: 40px; min-height: 100vh; }
+        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #f9f9f9; display: flex; align-items: center; justify-content: center; border: 1px solid #eee; }
+        main { background: white; padding: 40px; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.02); }
         .search-box { text-align: right; margin-bottom: 20px; }
-        .search-box input { padding: 5px; border: 1px solid #ffc0cb; border-radius: 5px; }
-        
-        /* 右サイドバー */
+        .search-box input { padding: 8px; border: 1px solid #ffc0cb; border-radius: 5px; width: 200px; }
+        header h1 { color: #d63384; border-bottom: 3px solid #ffc0cb; padding-bottom: 10px; }
         .sidebar-right { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-        .yui-img { width: 100%; height: auto; }
-        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; }
-
-        @media (max-width: 1000px) {
+        .yui-img { width: 100%; height: auto; display: block; }
+        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        @media (max-width: 1100px) {
             .site-wrapper { grid-template-columns: 1fr; }
             .sidebar-left, .sidebar-right { display: none; }
-            .mobile-chibi { display: block; position: fixed; bottom: 20px; right: 20px; z-index: 100; }
-            .mobile-chibi img { width: 70px; }
         }
     </style>
 </head>
 <body>
     <div class="site-wrapper">
         <aside class="sidebar-left">
-            <div class="yui-word">
-                <strong>今日の一言</strong><br>
-                <span id="daily-msg">深呼吸して、自分を褒めてあげてね。</span>
-            </div>
+            <div class="yui-word"><strong>結姉さん今日の一言</strong><br><span id="daily-msg">読み込み中...</span></div>
             <button class="omikuji-btn" onclick="drawOmikuji()">結姉さんおみくじ</button>
-            <div id="omikuji-result" style="margin-top:10px; font-size:0.8rem; color:#d63384;"></div>
-            
-            <div class="ad-space">
-                <a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a>
-            </div>
+            <div id="omikuji-result" style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
+            <div class="ad-space"><a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a></div>
         </aside>
 
         <main>
             <div class="search-box">
-                <input type="text" placeholder="お悩みを検索...">
+                <input type="text" id="search-input" placeholder="お悩みを検索..." onkeypress="handleSearch(event)">
             </div>
-            <h1>結姉さんの相談室</h1>
-            <div id="latest-post"></div>
-            <hr>
-            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold;">→ 過去のお悩みをもっと見る</a>
+            <header><h1>結姉さんの相談室</h1></header>
+            <div id="latest-post" style="margin: 40px 0;"><p>お便りを探しているわ...</p></div>
+            <hr style="border: 0; border-top: 1px solid #ffecf2; margin: 40px 0;">
+            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold; font-size:1.1rem;">→ 過去のお悩みアーカイブへ</a>
         </main>
 
         <aside class="sidebar-right">
@@ -61,28 +49,35 @@
         </aside>
     </div>
 
-    <div class="mobile-chibi" style="display:none;">
-        <a href="profile.html"><img src="yuichibi.png" alt="ちび結"></a>
-    </div>
-
     <script>
-        const words = ["自分を大切にね。", "明日はきっといい日になるわ。", "無理しなくていいのよ。", "あなたの味方はここにいるわ。"];
+        // 検索処理
+        function handleSearch(e) {
+            if (e.key === 'Enter') {
+                const query = document.getElementById('search-input').value;
+                window.location.href = `archive.html?q=${encodeURIComponent(query)}`;
+            }
+        }
+
+        const words = ["自分を大切にね。", "明日はきっといい日になるわ。", "あなたの味方はここにいるわ。"];
         document.getElementById('daily-msg').innerText = words[Math.floor(Math.random() * words.length)];
 
         function drawOmikuji() {
-            const res = ["大吉：最高の出会いがあるかも！", "中吉：自分磨きが実を結ぶわ。", "小吉：焦らずゆっくり進みましょう。"];
+            const res = ["大吉：最高の出会いがあるかも！", "中吉：自分磨きが吉。", "吉：幸せが見つかる予感。"];
             document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
         }
 
-        fetch('data/questions.json')
+        fetch('data/questions.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
-                const latest = data[0];
-                document.getElementById('latest-post').innerHTML = `
-                    <p style="color:#999;">${latest.date}</p>
-                    <h2><a href="${latest.url}" style="text-decoration:none; color:#333;">${latest.title}</a></h2>
-                    <p>${latest.description}</p>
-                `;
+                if (data && data.length > 0) {
+                    const latest = data[0];
+                    document.getElementById('latest-post').innerHTML = `
+                        <p style="color:#999; font-size:0.9rem;">${latest.date} 更新</p>
+                        <h2 style="margin: 10px 0;"><a href="${latest.url}" style="text-decoration:none; color:#333;">${latest.title}</a></h2>
+                        <p style="color:#666; line-height:1.6;">${latest.description}</p>
+                        <a href="${latest.url}" style="color:#d63384; font-weight:bold;">続きを読む</a>
+                    `;
+                }
             });
     </script>
 </body>

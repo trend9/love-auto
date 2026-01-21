@@ -6,31 +6,40 @@
     <link rel="stylesheet" href="style.css">
     <style>
         .archive-container { max-width: 800px; margin: 50px auto; background: white; padding: 40px; border-radius: 20px; }
-        .archive-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
-        .archive-item a { text-decoration: none; color: #333; font-weight: bold; }
-        .archive-item span { color: #999; font-size: 0.9rem; }
+        .archive-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .archive-item a { text-decoration: none; color: #333; font-weight: bold; flex: 1; }
+        .archive-item span { color: #999; font-size: 0.9rem; margin-left: 20px; }
         h1 { color: #d63384; border-bottom: 2px solid #ffc0cb; padding-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class="archive-container">
-        <h1>過去のお悩み一覧</h1>
-        <div id="archive-list">
-            </div>
+        <h1 id="archive-title">過去のお悩み一覧</h1>
+        <div id="archive-list"></div>
         <a href="index.html" style="display:block; margin-top:30px; color:#d63384;">← トップページへ</a>
     </div>
 
     <script>
-        fetch('data/questions.json')
+        const params = new URLSearchParams(window.location.search);
+        const query = params.get('q');
+        if(query) document.getElementById('archive-title').innerText = `「${query}」の検索結果`;
+
+        fetch('data/questions.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
                 const list = document.getElementById('archive-list');
-                data.forEach(q => {
-                    const div = document.createElement('div');
-                    div.className = 'archive-item';
-                    div.innerHTML = `<a href="${q.url}">${q.title}</a><span>${q.date}</span>`;
-                    list.appendChild(div);
-                });
+                const filtered = query ? data.filter(q => q.title.includes(query) || q.description.includes(query)) : data;
+                
+                if(filtered.length === 0) {
+                    list.innerHTML = "<p>見つからなかったわ。別のお悩みを探してみてね。</p>";
+                } else {
+                    filtered.forEach(q => {
+                        const div = document.createElement('div');
+                        div.className = 'archive-item';
+                        div.innerHTML = `<a href="${q.url}">${q.title}</a><span>${q.date}</span>`;
+                        list.appendChild(div);
+                    });
+                }
             });
     </script>
 </body>
