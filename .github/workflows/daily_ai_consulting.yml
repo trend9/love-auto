@@ -13,8 +13,9 @@ permissions:
 jobs:
   update-site:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -23,39 +24,39 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install llama-cpp-python
+        run: |
+          pip install --upgrade pip
+          pip install llama-cpp-python==0.2.26
 
-      - name: Download AI Model
+      - name: Download AI Model (Llama-3 Q4)
         run: |
           mkdir -p models
-          curl -L -o models/model.gguf https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
+          curl -L -o models/model.gguf \
+          https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
 
-      - name: Run daily update
+      - name: Run AI generation
         run: python daily_update.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p data posts
-          git add data/questions.json
-          if [ "$(ls -A posts/*.html 2>/dev/null)" ]; then
-            git add posts/*.html
-          fi
-          git commit -m "Update: 20 New Letters from Yui [skip ci]" || echo "No changes"
-          git push origin main --force
 
-      - name: Prepare Site for Deployment
+          git add posts/*.html data/questions.json index.html archive.html || true
+          git commit -m "Daily update by Yui AI" || echo "No changes"
+          git push origin main
+
+      - name: Prepare Pages
         run: |
-          mkdir -p _site/data _site/posts
-          cp index.html post.html archive.html profile.html style.css *.png _site/ || true
-          if [ -f "data/questions.json" ]; then cp data/questions.json _site/data/; fi
-          if [ "$(ls -A posts/*.html 2>/dev/null)" ]; then cp posts/*.html _site/posts/; fi
+          mkdir -p _site/posts _site/data
+          cp index.html archive.html style.css yui.png _site/ || true
+          cp posts/*.html _site/posts/ || true
+          cp data/questions.json _site/data/ || true
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '_site'
+          path: _site
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
