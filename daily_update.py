@@ -1,163 +1,228 @@
-import json
 import os
-import datetime
+import json
 import random
+from datetime import datetime
 from llama_cpp import Llama
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-POST_DIR = os.path.join(BASE_DIR, "posts")
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# =========================
+# 設定
+# =========================
+
+MODEL_PATH = "./models/model.gguf"
+POSTS_DIR = "posts"
+DATA_DIR = "data"
 QUESTIONS_JSON = os.path.join(DATA_DIR, "questions.json")
-POST_TEMPLATE = os.path.join(BASE_DIR, "post_template.html")
+POST_TEMPLATE = "post_template.html"
 
-MAX_INDEX_ITEMS = 10        # ← index に表示する最新件数
-RELATED_LINKS = 3           # ← 記事下に出す内部リンク数
+MAX_RETRY = 3
 
-os.makedirs(POST_DIR, exist_ok=True)
-os.makedirs(DATA_DIR, exist_ok=True)
+# =========================
+# ユーティリティ
+# =========================
 
-if not os.path.exists(QUESTIONS_JSON):
-    with open(QUESTIONS_JSON, "w", encoding="utf-8") as f:
-        json.dump([], f, ensure_ascii=False, indent=2)
+def now():
+    return datetime.now()
 
-with open(QUESTIONS_JSON, "r", encoding="utf-8") as f:
-    past = json.load(f)
+def load_json(path, default):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return default
+
+def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def clean_text(text: str) -> str:
+    """
+    LLM事故防止用クリーナー
+    """
+    banned = [
+        "Here is", "Please write", "回答例", "出題", "```", "python",
+        "【", "】", "(回答", "(例)", "Title:", "Meta"
+    ]
+    for b in banned:
+        text = text.replace(b, "")
+    return text.strip()
+
+# =========================
+# LLM 初期化
+# =========================
 
 llm = Llama(
-    model_path="./models/model.gguf",
-    n_ctx=1024,
-    n_threads=4
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    temperature=0.7,
+    top_p=0.9,
+    repeat_penalty=1.1,
 )
 
-now = datetime.datetime.now()
-date_str = now.strftime("%Y/%m/%d %H:%M")
-file_stamp = now.strftime("%Y%m%d_%H%M%S")
+def generate(prompt: str) -> str:
+    res = llm(
+        prompt,
+        max_tokens=512,
+        stop=["<|endoftext|>"]
+    )
+    return clean_text(res["choices"][0]["text"])
 
-# ======================
-# テーマ生成（被り防止）
-# ======================
-past_titles = [p["title"] for p in past][-20:]
+# =========================
+# 生成ロジック
+# =========================
 
-theme_prompt = f"""
-20〜30代女性向けの恋愛相談テーマを1つだけ出してください。
-過去と被らないこと。
+def generate_theme():
+    prompt = """
+あなたは恋愛相談ラジオの編集者です。
+以下の条件を必ず守ってください。
 
-過去テーマ:
-{past_titles}
+【条件】
+・日本語のみ
+・1行のみ
+・説明や前置きは禁止
+・テーマ文だけを出力
 
-条件:
-・短い日本語
-・感情が伝わる
-・タイトルのみ
+【出力例】
+結婚の焦りに悩む30代女性の恋愛相談
 """
+    return generate(prompt)
 
-theme = llm(theme_prompt, max_tokens=64)["choices"][0]["text"].strip()
+def generate_radio_name():
+    prompt = """
+日本人女性のラジオネームを1つだけ出力してください。
 
-# ======================
-# お便り
-# ======================
-letter_prompt = f"""
-次のテーマでラジオ相談のお便りを書いてください。
-
-テーマ: {theme}
-
-条件:
-・ラジオネームあり（◯◯ちゃん）
-・一人称
-・300〜400文字
+【条件】
+・ひらがな or カタカナ
+・2〜4文字
+・名前のみ
 """
+    return generate(prompt)
 
-letter = llm(letter_prompt, max_tokens=600)["choices"][0]["text"].strip()
+def generate_letter(theme, name):
+    prompt = f"""
+あなたは恋愛相談番組に投稿する一般女性です。
 
-# ======================
-# 回答
-# ======================
-answer_prompt = f"""
+【条件】
+・日本語のみ
+・説明禁止
+・400〜600文字
+・情景が浮かぶ具体的な悩み
+・一人称は「私」
+
+【テーマ】
+{theme}
+
+【ラジオネーム】
+{name}
+"""
+    return generate(prompt)
+
+def generate_answer(letter, name):
+    prompt = f"""
 あなたは恋愛相談ラジオの回答者「結姉さん」です。
 
-構成:
-1. 共感
-2. 悩みの核心
-3. 視点の転換
-4. 優しい一言
+【構成（厳守）】
+1. 共感（2〜3文）
+2. 悩みの核心（1〜2文）
+3. 視点の整理・提案（3〜4文）
+4. 優しい一言で締め
 
-禁止:
-・説教
-・〜すべき
-・専門用語
+【条件】
+・日本語のみ
+・説教禁止
+・箇条書き禁止
+・コード・英語禁止
 
-相談内容:
+【相談文】
 {letter}
 """
+    return generate(prompt)
 
-answer = llm(answer_prompt, max_tokens=700)["choices"][0]["text"]
-answer = answer.replace("【回答文】", "").strip()
+def generate_meta(theme, letter):
+    prompt = f"""
+以下の内容を要約し、検索結果用のメタディスクリプションを書いてください。
 
-# ======================
-# メタ description
-# ======================
-meta_prompt = f"""
-次の記事のメタディスクリプションを書いてください。
+【条件】
+・日本語のみ
+・100〜120文字
+・説明文や前置き禁止
+・1文のみ
 
-条件:
-・120文字以内
-・安心感
-・SEOタイトル等は含めない
+【テーマ】
+{theme}
+
+【本文】
+{letter}
 """
+    return generate(prompt)
 
-meta = llm(meta_prompt, max_tokens=150)["choices"][0]["text"].strip()
-
-# ======================
-# ラジオネーム抽出
-# ======================
-name = "匿名"
-for line in letter.splitlines():
-    if "ちゃん" in line:
-        name = line.strip()
-        break
-
-# ======================
-# 内部リンク生成
-# ======================
-related_html = ""
-if len(past) >= RELATED_LINKS:
-    related = random.sample(past, RELATED_LINKS)
-    related_html += "<ul class='related-posts'>"
-    for r in related:
-        related_html += f"<li><a href='../{r['url']}'>{r['title']}</a></li>"
-    related_html += "</ul>"
-
-# ======================
+# =========================
 # HTML生成
-# ======================
-with open(POST_TEMPLATE, "r", encoding="utf-8") as f:
-    tpl = f.read()
+# =========================
 
-html = (
-    tpl.replace("{{TITLE}}", theme)
-       .replace("{{META}}", meta)
-       .replace("{{DATE}}", date_str)
-       .replace("{{NAME}}", name)
-       .replace("{{LETTER}}", letter)
-       .replace("{{ANSWER}}", answer)
-       .replace("{{RELATED}}", related_html)
-)
+def render_html(template, data):
+    html = template
+    for k, v in data.items():
+        html = html.replace(f"{{{{{k}}}}}", v)
+    return html
 
-post_filename = f"{file_stamp}.html"
-with open(os.path.join(POST_DIR, post_filename), "w", encoding="utf-8") as f:
-    f.write(html)
+# =========================
+# メイン処理
+# =========================
 
-# ======================
-# questions.json 更新（最新が先頭）
-# ======================
-past.insert(0, {
-    "title": theme,
-    "url": f"posts/{post_filename}",
-    "date": date_str,
-    "description": meta
-})
+def main():
+    os.makedirs(POSTS_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
 
-with open(QUESTIONS_JSON, "w", encoding="utf-8") as f:
-    json.dump(past, f, ensure_ascii=False, indent=2)
+    questions = load_json(QUESTIONS_JSON, [])
 
-print("生成完了:", post_filename)
+    for _ in range(MAX_RETRY):
+        try:
+            theme = generate_theme()
+            name = generate_radio_name()
+            letter = generate_letter(theme, name)
+            answer = generate_answer(letter, name)
+            meta = generate_meta(theme, letter)
+
+            if not all([theme, name, letter, answer, meta]):
+                raise ValueError("生成失敗")
+
+            break
+        except Exception:
+            continue
+    else:
+        raise RuntimeError("AI生成失敗")
+
+    dt = now()
+    date_str = dt.strftime("%Y/%m/%d %H:%M")
+    file_id = dt.strftime("%Y%m%d_%H%M%S")
+    filename = f"{file_id}.html"
+    filepath = os.path.join(POSTS_DIR, filename)
+
+    with open(POST_TEMPLATE, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    html = render_html(template, {
+        "TITLE": theme,
+        "META": meta,
+        "DATE": date_str,
+        "NAME": name,
+        "LETTER": letter,
+        "ANSWER": answer,
+    })
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    questions.insert(0, {
+        "title": theme,
+        "url": f"posts/{filename}",
+        "date": date_str,
+        "description": meta
+    })
+
+    save_json(QUESTIONS_JSON, questions)
+
+    print("OK: article generated")
+
+if __name__ == "__main__":
+    main()
