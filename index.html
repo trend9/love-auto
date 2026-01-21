@@ -38,7 +38,11 @@
                 <input type="text" id="search-input" placeholder="お悩みを検索..." onkeypress="handleSearch(event)">
             </div>
             <header><h1>結姉さんの相談室</h1></header>
-            <div id="latest-post" style="margin: 40px 0;"><p>お便りを探しているわ...</p></div>
+            
+            <div id="latest-posts-list" style="margin: 40px 0;">
+                <p>お便りを探しているわ...</p>
+            </div>
+
             <hr style="border: 0; border-top: 1px solid #ffecf2; margin: 40px 0;">
             <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold; font-size:1.1rem;">→ 過去のお悩みアーカイブへ</a>
         </main>
@@ -66,18 +70,34 @@
             document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
         }
 
+        // 記事読み込み（20件表示）
         fetch('data/questions.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
+                const container = document.getElementById('latest-posts-list');
                 if (data && data.length > 0) {
-                    const latest = data[0];
-                    document.getElementById('latest-post').innerHTML = `
-                        <p style="color:#999; font-size:0.9rem;">${latest.date} 更新</p>
-                        <h2 style="margin: 10px 0;"><a href="${latest.url}" style="text-decoration:none; color:#333;">${latest.title}</a></h2>
-                        <p style="color:#666; line-height:1.6;">${latest.description}</p>
-                        <a href="${latest.url}" style="color:#d63384; font-weight:bold;">続きを読む</a>
-                    `;
+                    container.innerHTML = ''; // 待機メッセージを消去
+                    
+                    // 最新から20件を切り出す
+                    const latestPosts = data.slice(0, 20);
+                    
+                    latestPosts.forEach(post => {
+                        const postHtml = `
+                            <div class="post-item" style="margin-bottom: 50px; border-bottom: 1px dashed #ffecf2; padding-bottom: 20px;">
+                                <p style="color:#999; font-size:0.9rem;">${post.date} 更新</p>
+                                <h2 style="margin: 10px 0;"><a href="${post.url}" style="text-decoration:none; color:#333;">${post.title}</a></h2>
+                                <p style="color:#666; line-height:1.6; font-size:0.95rem;">${post.description}</p>
+                                <a href="${post.url}" style="color:#d63384; font-weight:bold; text-decoration:none;">お返事を読む ➔</a>
+                            </div>
+                        `;
+                        container.innerHTML += postHtml;
+                    });
+                } else {
+                    container.innerHTML = '<p>まだお便りが届いていないみたい。待っていてね。</p>';
                 }
+            })
+            .catch(err => {
+                document.getElementById('latest-posts-list').innerHTML = '<p>読み込みに失敗しちゃった。リロードしてみてね。</p>';
             });
     </script>
 </body>
