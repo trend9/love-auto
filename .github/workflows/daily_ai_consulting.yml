@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
   pages: write
-  id-token: write
 
 jobs:
   update-site:
@@ -28,21 +27,24 @@ jobs:
           pip install --upgrade pip
           pip install llama-cpp-python
 
-      - name: Download AI Model
+      - name: Download GGUF model (validated)
         run: |
           mkdir -p models
           if [ ! -f models/model.gguf ]; then
-            curl -L -o models/model.gguf \
-            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K.gguf
+            curl -L --fail \
+              https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K.gguf \
+              -o models/model.gguf
           fi
+          ls -lh models/model.gguf
+          test $(stat -c%s models/model.gguf) -gt 4000000000
 
-      - name: Run AI generator
+      - name: Run generator
         run: python daily_update.py
 
       - name: Commit & Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/questions.json posts/*.html archive.html || true
+          git add posts/*.html data/questions.json archive.html index.html
           git commit -m "Daily update by Yui AI" || echo "No changes"
           git push
