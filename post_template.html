@@ -2,41 +2,62 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>{{TITLE}}</title>
 
+  <!-- SEO -->
+  <title>{{TITLE}}</title>
   <meta name="description" content="{{META}}">
   <meta property="og:title" content="{{TITLE}}">
   <meta property="og:description" content="{{META}}">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
 
+  <!-- Mobile -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- CSS（posts配下なので ../） -->
   <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
+
   <div class="post-container">
 
-    <p style="color:#999; font-size:0.9rem;">更新日: {{DATE}}</p>
+    <!-- 更新日 -->
+    <p class="post-date">更新日：{{DATE}}</p>
 
-    <h1>{{NAME}}さんからのお便り</h1>
+    <!-- タイトル -->
+    <h1 class="post-title">{{NAME}}さんからのお便り</h1>
 
-    <div class="letter-section">
-      <p style="white-space: pre-wrap;">{{LETTER}}</p>
+    <!-- 相談内容 -->
+    <section class="letter-section">
+      <h2 class="section-title">お便り内容</h2>
+      <p class="post-text" style="white-space: pre-wrap;">
+{{LETTER}}
+      </p>
+    </section>
+
+    <!-- 回答 -->
+    <section class="answer-section">
+      <h2 class="section-title">結姉さんからの回答</h2>
+      <p class="post-text" style="white-space: pre-wrap;">
+{{ANSWER}}
+      </p>
+    </section>
+
+    <!-- 関連記事 -->
+    <section class="related-section">
+      <h2 class="section-title">こんな相談も読まれています</h2>
+      <ul class="related-list">
+{{RELATED}}
+      </ul>
+    </section>
+
+    <!-- 戻る -->
+    <div class="back-area">
+      <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
     </div>
-
-    <div class="answer-section">
-      <h3>結姉さんからの回答</h3>
-      <p style="white-space: pre-wrap;">{{ANSWER}}</p>
-    </div>
-
-    <div class="related-section">
-      <h3>こんな相談も読まれています</h3>
-      {{RELATED}}
-    </div>
-
-    <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
 
   </div>
+
 </body>
 </html>
