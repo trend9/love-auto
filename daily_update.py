@@ -9,121 +9,112 @@ from llama_cpp import Llama
 MODEL_PATH = "./models/model.gguf"
 GENERATE_COUNT = 20
 
-def ai_generate_letter(llm, index):
-    print(f"結姉さんが{index+1}通目を執筆中...")
-    themes = [
-        "既婚者の彼を諦める方法", "マッチングアプリで2回目に誘われない理由", 
-        "片思いのLINE頻度", "30代独身の結婚への焦り", 
-        "復縁の可能性と冷却期間", "社内恋愛がバレるリスク",
-        "元カレへの未練を断ち切る", "マッチングアプリの初対面の会話"
-    ]
-    theme = random.choice(themes)
+def clean_text(text):
+    """不要な記号、システム文、英語のメタ指示を完全に削除"""
+    if not text: return ""
+    text = re.sub(r'(RadioName:|Letter:|Answer:|Description:|SEOTitle:|名前:|相談:|回答:|要約:|タイトル:)', '', text)
+    text = re.sub(r'(\*\*|\[|\]|\*|#)', '', text).strip()
+    # 英語のシステム指示行を削除
+    lines = [line for line in text.split('\n') if not re.search(r'(please proceed|next question|instruction|system:|assistant:)', line, re.I)]
+    return "\n".join(lines).strip()
 
-    try:
-        # 指示語を日本語に統一し、英語の入り込む余地を消す
-        prompt = f"""[System: あなたは包容力のある日本の女性、結姉さんです。必ず日本語のみで、記号を使わずに回答してください。]
-テーマ: {theme}
-名前: 
-相談: 結姉さん、聞いて…
-回答: 
-要約: 
-タイトル: 
----"""
-        output = llm(prompt, max_tokens=1000, temperature=0.7, stop=["---"])
-        text = output['choices'][0]['text'].strip()
-        
-        # データの抽出ロジック（正規表現でより確実に）
-        res = {"radio_name": f"匿名さん_{index+1}", "letter": "", "answer": "", "description": "", "seo_title": ""}
-        
-        parts = {
-            "name": r"名前:(.*?)(\n|$)",
-            "letter": r"相談:(.*?)(\n回答:|\n要約:|\nタイトル:|$)",
-            "answer": r"回答:(.*?)(\n要約:|\nタイトル:|$)",
-            "description": r"要約:(.*?)(\nタイトル:|$)",
-            "title": r"タイトル:(.*?)$"
-        }
+def ai_generate_letter(llm, specific_theme, index):
+    print(f"--- 記事 {index+1}/20 の生成を開始 ---")
+    
+    attempts = 0
+    while attempts < 5:
+        attempts += 1
+        try:
+            prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+あなたは日本の優しい女性「結姉さん」です。以下の恋愛相談を作成してください。
+【禁止事項】英語、システム指示、記号（**など）、定型文の使い回し。
+【必須】相談者の悩みに対し、寄り添いながらも具体的な解決へ導く400文字以上の温かい回答。
 
-        for key, pattern in parts.items():
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                val = match.group(1).replace('*', '').replace('[', '').replace(']', '').strip()
-                if key == "name": res["radio_name"] = val or res["radio_name"]
-                elif key == "letter": res["letter"] = val
-                elif key == "answer": res["answer"] = val
-                elif key == "description": res["description"] = val
-                elif key == "title": res["seo_title"] = val
+出力形式:
+RadioName: (日本人女性らしい名前)
+Letter: (具体的なお悩み内容)
+Answer: (結姉さんからの解決へ導く回答)
+Description: (SEO用の要約)
+SEOTitle: (検索されやすいタイトル)
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+今回のテーマ: {specific_theme}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+RadioName:"""
 
-        # --- 最終防衛策（データが空、または英語の場合） ---
-        if not res["letter"] or len(re.findall(r'[a-zA-Z]', res["letter"])) > 20:
-            res["letter"] = f"結姉さん、聞いて。{theme}のことで悩んでいるんです。どうすればいいか分からなくて…"
-        
-        if not res["answer"] or len(re.findall(r'[a-zA-Z]', res["answer"])) > 20:
-            res["answer"] = "あなたの悩み、しっかり受け止めたわ。今は無理をせず、自分の心を一番に大切にしてあげて。一歩ずつ、一緒に考えていきましょうね。"
+            output = llm(prompt, max_tokens=1500, temperature=0.8, stop=["<|eot_id|>"])
+            raw_text = "RadioName:" + output['choices'][0]['text'].strip()
+            
+            # パース処理
+            res = {"radio_name": "", "letter": "", "answer": "", "description": "", "seo_title": ""}
+            sections = re.split(r'(RadioName:|Letter:|Answer:|Description:|SEOTitle:)', raw_text)
+            for i in range(1, len(sections), 2):
+                key, val = sections[i], clean_text(sections[i+1])
+                if "RadioName:" in key: res["radio_name"] = val
+                elif "Letter:" in key: res["letter"] = val
+                elif "Answer:" in key: res["answer"] = val
+                elif "Description:" in key: res["description"] = val
+                elif "SEOTitle:" in key: res["seo_title"] = val
 
-        if not res["seo_title"] or len(res["seo_title"]) < 5:
-            res["seo_title"] = f"「{theme}」のお悩み相談。結姉さんが答える解決へのヒント"
+            # --- セルフチェック機能 ---
+            is_valid = True
+            error_msg = ""
 
-        if not res["description"]:
-            res["description"] = res["letter"][:80] + "..."
+            # 1. 英語混入チェック
+            if len(re.findall(r'[a-zA-Z]', res["answer"])) > 20:
+                is_valid = False; error_msg = "英語混入"
+            
+            # 2. 回答の長さチェック（短すぎるとボツ）
+            if len(res["answer"]) < 100:
+                is_valid = False; error_msg = "回答不足"
 
-        return res
-    except Exception as e:
-        print(f"エラー発生: {e}")
-        return None
+            # 3. ラジオネームが不適切（テーマ名や記号）
+            forbidden_names = ["恋愛", "相談", "不倫", "結婚", "テーマ", "匿名"]
+            if any(f in res["radio_name"] for f in forbidden_names) or not res["radio_name"]:
+                res["radio_name"] = random.choice(["さくら", "美咲", "ななみ", "ゆいな", "加奈", "まどか"])
 
-def update_system(new_data_list):
-    os.makedirs("posts", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
-    db_path = "data/questions.json"
-    db = []
-    if os.path.exists(db_path):
-        with open(db_path, "r", encoding="utf-8") as f:
-            try: db = json.load(f)
-            except: db = []
+            # 4. タイトルの妥当性
+            if len(res["seo_title"]) < 10 or "SEOTitle" in res["seo_title"]:
+                is_valid = False; error_msg = "タイトル不備"
 
-    with open("post_template.html", "r", encoding="utf-8") as f:
-        template = f.read()
+            if is_valid:
+                print(f"  -> チェック合格 (試行回数: {attempts})")
+                return res
+            else:
+                print(f"  -> チェック不合格 ({error_msg})。再試行します...")
 
-    now = datetime.now()
-    for i, data in enumerate(new_data_list):
-        time_suffix = (now + timedelta(seconds=i)).strftime("%Y%m%d_%H%M%S")
-        display_date = now.strftime("%Y/%m/%d %H:%M")
-        file_name = f"{time_suffix}.html"
-        
-        # 変数置換（テンプレート側のキーと一致させる）
-        content = template.replace("{{SEO_TITLE}}", data['seo_title'])\
-                          .replace("{{SEO_DESCRIPTION}}", data['description'])\
-                          .replace("{{TITLE}}", data['radio_name'] + "さんからのお便り")\
-                          .replace("{{LETTER}}", data['letter'])\
-                          .replace("{{ANSWER}}", data['answer'])\
-                          .replace("{{DATE}}", display_date)
-        
-        with open(f"posts/{file_name}", "w", encoding="utf-8") as f:
-            f.write(content)
-
-        db.insert(0, {
-            "title": data['seo_title'],
-            "url": f"posts/{file_name}",
-            "date": display_date,
-            "description": data['description']
-        })
-
-    with open(db_path, "w", encoding="utf-8") as f:
-        json.dump(db[:1000], f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"  -> エラー発生: {e}")
+    
+    return None
 
 def main():
     if not os.path.exists(MODEL_PATH): return
-    llm = Llama(model_path=MODEL_PATH, n_ctx=1024, verbose=False)
-    
+    llm = Llama(model_path=MODEL_PATH, n_ctx=2048, verbose=False)
+
+    # 20個の重複しないテーマを作成
+    all_themes = [
+        "マッチングアプリで会った後の未読無視", "職場の既婚男性への片思い", "同棲中の彼氏の浮気疑惑",
+        "元カレとの復縁を望む冷却期間", "親に反対されている結婚", "婚活疲れと自信喪失",
+        "社内恋愛がバレた時の対処法", "遠距離恋愛のマンネリ解消", "元カノと連絡を取る彼氏への嫉妬",
+        "30代後半の独身の焦りと不安", "マッチングアプリでの初デートの沈黙", "浮気相手からの卒業",
+        "彼氏の束縛が激しい悩み", "好きだけど価値観が合わない別れ", "年の差恋愛の悩み",
+        "友達以上恋人未満の期間が長い", "マッチングアプリのプロフィールの嘘", "結婚直前のマリッジブルー",
+        "不倫関係を綺麗に清算する方法", "失恋から立ち直るための心の整理"
+    ]
+    random.shuffle(all_themes)
+    selected_themes = all_themes[:GENERATE_COUNT]
+
     generated_results = []
-    for i in range(GENERATE_COUNT):
-        res = ai_generate_letter(llm, i)
+    for i, theme in enumerate(selected_themes):
+        res = ai_generate_letter(llm, theme, i)
         if res:
             generated_results.append(res)
     
     if generated_results:
+        # JSON更新とHTML生成（update_system関数は以前のものを利用、適宜統合）
+        from daily_update import update_system # もしくは同ファイル内に配置
         update_system(generated_results)
-        print(f"完了：{len(generated_results)}件更新したわ。")
+        print(f"完了：全{len(generated_results)}件の精密チェック済み記事を生成しました。")
 
 if __name__ == "__main__":
     main()
