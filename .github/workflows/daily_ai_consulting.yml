@@ -46,6 +46,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add posts/*.html data/questions.json archive.html index.html
+
           git commit -m "Daily update by Yui AI" || echo "No changes"
-          git push
+
+          git push origin main --force
