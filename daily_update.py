@@ -1,151 +1,149 @@
-import os, json, re
+import os, json, re, time, random
 from datetime import datetime
 from llama_cpp import Llama
 
 MODEL_PATH = "./models/model.gguf"
-THEME = "結婚の焦り"
+POST_DIR = "posts"
+DATA_DIR = "data"
+JSON_PATH = "data/questions.json"
+ARCHIVE_PATH = "archive.html"
 
-ANSWER_MIN = 100
-ANSWER_MAX = 200
-
-# =====================
-# Utils
-# =====================
-
-def clean(t):
-    if not t:
-        return ""
-    return re.sub(r'[<>#*\[\]]', '', t).strip()
-
-def extract(label, text):
-    m = re.search(rf"{label}[：:]\s*(.*?)(?=\n\d\.|$)", text, re.S)
-    return clean(m.group(1)) if m else ""
-
-def normalize_answer(t):
-    if len(t) > ANSWER_MAX:
-        return t[:ANSWER_MAX].rstrip("。") + "。"
-    if len(t) < ANSWER_MIN:
-        return t + " 焦らず、自分の気持ちを大切にしてみてね。"
-    return t
+os.makedirs(POST_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # =====================
-# AI Generation
+# AI 初期化
 # =====================
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    n_threads=4,
+    temperature=0.7,
+)
 
-def generate_article(llm, theme):
-    prompt = f"""<|begin_of_text|>
-<|start_header_id|>system<|end_header_id|>
-あなたは35歳の日本人女性「ゆい姉さん」です。
-恋愛相談に慣れていて、優しく現実的に答えます。
-<|end_of_text|>
+# =====================
+# テーマ被り防止
+# =====================
+used_themes = []
+if os.path.exists(JSON_PATH):
+    with open(JSON_PATH, "r", encoding="utf-8") as f:
+        used_themes = [q["title"] for q in json.load(f)]
 
-<|start_header_id|>user<|end_header_id|>
-テーマ「{theme}」で恋愛相談記事を作ってください。
-以下の形式を必ず守って日本語で書いてください。
+themes = [
+    "結婚の焦り",
+    "年齢と恋愛の不安",
+    "周囲と比べてしまう恋",
+    "将来が見えない恋人",
+    "一人で生きる覚悟"
+]
 
-1.ラジオネーム:
-2.SEOタイトル:
-3.相談文:
-4.回答文:
-5.メタディスクリプション:
-<|end_of_text|>
+theme = random.choice([t for t in themes if t not in used_themes] or themes)
 
-<|start_header_id|>assistant<|end_header_id|>
+# =====================
+# プロンプト（超重要）
+# =====================
+PROMPT = f"""
+あなたは35歳の女性「結姉さん」です。
+必ず以下の形式のみで日本語出力してください。
+英語・署名・説明は禁止。
+
+1.ラジオネーム：
+2.お便り内容：
+3.結姉さんの回答：
+
+【テーマ】
+{theme}
 """
 
-    out = llm(
-        prompt,
-        max_tokens=600,
-        temperature=0.6,
-        top_p=0.9,
-        repeat_penalty=1.2,
-        stop=["<|end_of_text|>"]
-    )["choices"][0]["text"]
-
-    print("====== RAW OUTPUT ======")
-    print(out)
-    print("========================")
-
-    return {
-        "radio": extract("1.ラジオネーム", out),
-        "title": extract("2.SEOタイトル", out),
-        "letter": extract("3.相談文", out),
-        "answer": extract("4.回答文", out),
-        "desc": extract("5.メタディスクリプション", out),
-    }
+# =====================
+# extract（ゆるい）
+# =====================
+def extract(label, text):
+    m = re.search(rf"{label}[:：]\s*(.*?)(?=\n\d\.|$)", text, re.S)
+    return m.group(1).strip() if m else ""
 
 # =====================
-# Save files
+# AI生成（リトライ付き）
 # =====================
+for _ in range(3):
+    out = llm(PROMPT, max_tokens=800)["choices"][0]["text"]
 
-def save_article(data, template):
-    os.makedirs("posts", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
+    name = extract("1.ラジオネーム", out)
+    letter = extract("2.お便り内容", out)
+    answer = extract("3.結姉さんの回答", out)
 
-    now = datetime.now()
-    stamp = now.strftime("%Y%m%d_%H%M%S")
-    date = now.strftime("%Y/%m/%d %H:%M")
-
-    html = (
-        template
-        .replace("{{SEO_TITLE}}", data["title"])
-        .replace("{{SEO_DESCRIPTION}}", data["desc"])
-        .replace("{{TITLE}}", f'{data["radio"]}さんからのお便り')
-        .replace("{{LETTER}}", data["letter"])
-        .replace("{{ANSWER}}", data["answer"])
-        .replace("{{DATE}}", date)
-    )
-
-    path = f"posts/{stamp}.html"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    return {
-        "title": data["title"],
-        "url": path,
-        "date": date,
-        "description": data["desc"]
-    }
+    if name and letter and answer:
+        break
+else:
+    raise RuntimeError("AI生成に失敗")
 
 # =====================
-# Main
+# 日付生成
 # =====================
+now = datetime.now()
+slug = now.strftime("%Y%m%d_%H%M%S")
+url = f"posts/{slug}.html"
+date_str = now.strftime("%Y/%m/%d %H:%M")
 
-def main():
-    llm = Llama(
-        model_path=MODEL_PATH,
-        n_ctx=2048,
-        verbose=True
-    )
+# =====================
+# HTML生成
+# =====================
+with open("post_template.html", "r", encoding="utf-8") as f:
+    html = f.read()
 
-    with open("post_template.html", "r", encoding="utf-8") as f:
-        template = f.read()
+html = html.replace("{{TITLE}}", theme)
+html = html.replace("{{DATE}}", date_str)
+html = html.replace("{{NAME}}", name)
+html = html.replace("{{LETTER}}", letter)
+html = html.replace("{{ANSWER}}", answer)
 
-    data = generate_article(llm, THEME)
+with open(url, "w", encoding="utf-8") as f:
+    f.write(html)
 
-    # 最低条件チェック
-    if not data["title"] or not data["letter"] or not data["answer"]:
-        raise RuntimeError("AI OUTPUT INVALID")
+# =====================
+# JSON更新
+# =====================
+entry = {
+    "title": theme,
+    "url": url,
+    "date": date_str,
+    "description": letter[:100]
+}
 
-    data["answer"] = normalize_answer(data["answer"])
+data = []
+if os.path.exists(JSON_PATH):
+    with open(JSON_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    item = save_article(data, template)
+data.insert(0, entry)
 
-    # JSON 更新
-    db = []
-    if os.path.exists("data/questions.json"):
-        with open("data/questions.json", "r", encoding="utf-8") as f:
-            try:
-                db = json.load(f)
-            except:
-                pass
+with open(JSON_PATH, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
 
-    db.insert(0, item)
+# =====================
+# archive.html 自動生成（★必須）
+# =====================
+rows = ""
+for q in data:
+    rows += f'<li><a href="{q["url"]}">{q["title"]}</a> <span>{q["date"]}</span></li>\n'
 
-    with open("data/questions.json", "w", encoding="utf-8") as f:
-        json.dump(db, f, ensure_ascii=False, indent=2)
+archive_html = f"""
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>相談アーカイブ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>恋愛相談アーカイブ</h1>
+<ul>
+{rows}
+</ul>
+<a href="index.html">← トップへ</a>
+</body>
+</html>
+"""
 
-    print("SUCCESSFULLY GENERATED")
-
-if __name__ == "__main__":
-    main()
+with open(ARCHIVE_PATH, "w", encoding="utf-8") as f:
+    f.write(archive_html)

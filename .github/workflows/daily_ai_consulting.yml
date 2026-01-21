@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -26,37 +26,23 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install llama-cpp-python==0.2.26
+          pip install llama-cpp-python
 
-      - name: Download AI Model (Llama-3 Q4)
+      - name: Download AI Model
         run: |
           mkdir -p models
-          curl -L -o models/model.gguf \
-          https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
+          if [ ! -f models/model.gguf ]; then
+            curl -L -o models/model.gguf \
+            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K.gguf
+          fi
 
-      - name: Run AI generation
+      - name: Run AI generator
         run: python daily_update.py
 
-      - name: Commit and push changes
+      - name: Commit & Push
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add posts/*.html data/questions.json index.html archive.html || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/questions.json posts/*.html archive.html || true
           git commit -m "Daily update by Yui AI" || echo "No changes"
-          git push origin main
-
-      - name: Prepare Pages
-        run: |
-          mkdir -p _site/posts _site/data
-          cp index.html archive.html style.css yui.png _site/ || true
-          cp posts/*.html _site/posts/ || true
-          cp data/questions.json _site/data/ || true
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+          git push
