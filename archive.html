@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>過去のお悩みアーカイブ - 結姉さんの相談室</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .archive-container { max-width: 800px; margin: 50px auto; background: white; padding: 40px; border-radius: 20px; }
+        .archive-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .archive-item a { text-decoration: none; color: #333; font-weight: bold; }
+        .archive-item span { color: #999; font-size: 0.9rem; }
+        h1 { color: #d63384; border-bottom: 2px solid #ffc0cb; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="archive-container">
+        <h1>過去のお悩み一覧</h1>
+        <div id="archive-list">
+            </div>
+        <a href="index.html" style="display:block; margin-top:30px; color:#d63384;">← トップページへ</a>
+    </div>
+
+    <script>
+        fetch('data/questions.json')
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById('archive-list');
+                data.forEach(q => {
+                    const div = document.createElement('div');
+                    div.className = 'archive-item';
+                    div.innerHTML = `<a href="${q.url}">${q.title}</a><span>${q.date}</span>`;
+                    list.appendChild(div);
+                });
+            });
+    </script>
+</body>
+</html>

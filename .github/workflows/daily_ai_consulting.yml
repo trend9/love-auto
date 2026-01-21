@@ -23,12 +23,14 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install feedparser llama-cpp-python
+        run: |
+          pip install feedparser llama-cpp-python requests beautifulsoup4
 
       - name: Download AI Model
         run: |
           mkdir -p models
-          curl -L -o models/model.gguf https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
+          # 超軽量・2.2GBモデル (Q2_K) に変更して安定性を向上
+          curl -L -o models/model.gguf https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
 
       - name: Run daily update
         run: python daily_update.py
@@ -37,16 +39,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # publicの内容をリポジトリのルートに同期（アーカイブ保存）
           cp -r public/* .
-          git add data/questions.json posts/*.md index.html post.html style.css *.png
+          git add data/questions.json posts/*.html index.html post.html archive.html profile.html style.css *.png
           git commit -m "Update: Archive persistent posts [skip ci]" || echo "No changes"
           git push origin main --force
 
       - name: Prepare Site Artifact
         run: |
           mkdir -p _site/data _site/posts
-          cp index.html post.html style.css *.png _site/
+          cp index.html post.html archive.html profile.html style.css *.png _site/
           cp data/questions.json _site/data/
           cp -r posts/* _site/posts/
 

@@ -2,204 +2,87 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>結姉さんのAI恋愛相談室</title>
+    <title>結姉さんの相談室</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* レイアウトの強制上書き */
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #fff9fb;
-            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
-            overflow-x: hidden;
-        }
+        .site-wrapper { display: grid; grid-template-columns: 300px 1fr 300px; gap: 20px; max-width: 1400px; margin: 0 auto; }
+        /* 左サイドバー */
+        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; }
+        .yui-word { background: #fff0f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; border: 1px dashed #d63384; }
+        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #eee; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        
+        /* 中央メイン */
+        main { background: white; padding: 40px; min-height: 100vh; }
+        .search-box { text-align: right; margin-bottom: 20px; }
+        .search-box input { padding: 5px; border: 1px solid #ffc0cb; border-radius: 5px; }
+        
+        /* 右サイドバー */
+        .sidebar-right { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .yui-img { width: 100%; height: auto; }
+        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; }
 
-        /* 画面全体の設計：3カラム風（左：空、中：メイン、右：結姉さん） */
-        .site-wrapper {
-            display: grid;
-            grid-template-columns: 1fr minmax(auto, 800px) 1fr;
-            width: 100%;
-            min-height: 100vh;
-        }
-
-        /* メインエリア（中央） */
-        main {
-            grid-column: 2; /* 中央の列に配置 */
-            background: white;
-            padding: 40px;
-            box-sizing: border-box;
-            box-shadow: 0 0 20px rgba(0,0,0,0.03);
-            min-height: 100vh;
-        }
-
-        header h1 {
-            color: #d63384;
-            border-bottom: 3px solid #ffc0cb;
-            padding-bottom: 15px;
-            margin-bottom: 30px;
-        }
-
-        .question-item {
-            padding: 20px 0;
-            border-bottom: 1px solid #fef0f5;
-        }
-
-        .question-item a {
-            text-decoration: none;
-            color: #333;
-            font-weight: bold;
-            font-size: 1.15rem;
-            display: block;
-            margin-top: 5px;
-        }
-
-        /* --- 右側サイドバー（結姉さん） --- */
-        .sidebar-right {
-            grid-column: 3; /* 右側の列に配置 */
-            position: sticky;
-            top: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end; /* 右下側に配置 */
-            align-items: center;
-            padding-bottom: 0;
-            overflow: visible;
-        }
-
-        .yui-visual-container {
-            position: relative;
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .yui-visual-container img {
-            width: 100%;
-            height: auto;
-            display: block;
-            vertical-align: bottom;
-        }
-
-        /* 結姉さんの上の吹き出し */
-        .yui-bubble-link {
-            position: absolute;
-            top: -60px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            border: 2px solid #ffc0cb;
-            padding: 12px 20px;
-            border-radius: 30px;
-            text-decoration: none;
-            color: #d63384;
-            font-weight: bold;
-            white-space: nowrap;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-            transition: 0.3s;
-            z-index: 100;
-        }
-
-        .yui-bubble-link:hover {
-            background: #d63384;
-            color: white;
-        }
-
-        .yui-bubble-link::after {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 50%;
-            margin-left: -10px;
-            border-width: 10px 10px 0 10px;
-            border-style: solid;
-            border-color: white transparent transparent transparent;
-        }
-
-        /* --- モバイル対応（900px以下） --- */
-        .mobile-chibi-fixed { display: none; }
-
-        @media (max-width: 900px) {
-            .site-wrapper {
-                grid-template-columns: 1fr; /* 1カラムにする */
-            }
-            main {
-                grid-column: 1;
-                padding: 20px;
-            }
-            .sidebar-right {
-                display: none !important;
-            }
-            .mobile-chibi-fixed {
-                display: block;
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                z-index: 9999;
-            }
-            .mobile-chibi-fixed img {
-                width: 80px;
-                height: auto;
-                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
-            }
+        @media (max-width: 1000px) {
+            .site-wrapper { grid-template-columns: 1fr; }
+            .sidebar-left, .sidebar-right { display: none; }
+            .mobile-chibi { display: block; position: fixed; bottom: 20px; right: 20px; z-index: 100; }
+            .mobile-chibi img { width: 70px; }
         }
     </style>
 </head>
 <body>
-
     <div class="site-wrapper">
-        <div></div>
+        <aside class="sidebar-left">
+            <div class="yui-word">
+                <strong>今日の一言</strong><br>
+                <span id="daily-msg">深呼吸して、自分を褒めてあげてね。</span>
+            </div>
+            <button class="omikuji-btn" onclick="drawOmikuji()">結姉さんおみくじ</button>
+            <div id="omikuji-result" style="margin-top:10px; font-size:0.8rem; color:#d63384;"></div>
+            
+            <div class="ad-space">
+                <a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a>
+            </div>
+        </aside>
 
         <main>
-            <header>
-                <h1>結姉さんのAI恋愛相談室</h1>
-            </header>
-            
-            <div id="article-list">
-                <p>読み込み中よ、少し待ってね...</p>
+            <div class="search-box">
+                <input type="text" placeholder="お悩みを検索...">
             </div>
-
-            <footer style="margin-top: 100px; text-align: center; color: #ddd; font-size: 0.8rem;">
-                &copy; 2026 結姉さんのAI恋愛相談室
-            </footer>
+            <h1>結姉さんの相談室</h1>
+            <div id="latest-post"></div>
+            <hr>
+            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold;">→ 過去のお悩みをもっと見る</a>
         </main>
 
         <aside class="sidebar-right">
-            <div class="yui-visual-container">
-                <a href="profile.html" class="yui-bubble-link">結姉さんのプロフィール</a>
-                <img src="yui.png" alt="結姉さん">
-            </div>
+            <a href="profile.html" class="bubble">結姉さんのプロフィール</a>
+            <img src="yui.png" alt="結姉さん" class="yui-img">
         </aside>
     </div>
 
-    <div class="mobile-chibi-fixed">
-        <a href="profile.html">
-            <img src="yuichibi.png" alt="ちび結">
-        </a>
+    <div class="mobile-chibi" style="display:none;">
+        <a href="profile.html"><img src="yuichibi.png" alt="ちび結"></a>
     </div>
 
     <script>
-        fetch('data/questions.json?v=' + Date.now())
+        const words = ["自分を大切にね。", "明日はきっといい日になるわ。", "無理しなくていいのよ。", "あなたの味方はここにいるわ。"];
+        document.getElementById('daily-msg').innerText = words[Math.floor(Math.random() * words.length)];
+
+        function drawOmikuji() {
+            const res = ["大吉：最高の出会いがあるかも！", "中吉：自分磨きが実を結ぶわ。", "小吉：焦らずゆっくり進みましょう。"];
+            document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
+        }
+
+        fetch('data/questions.json')
             .then(res => res.json())
             .then(data => {
-                const list = document.getElementById('article-list');
-                list.innerHTML = '';
-                if (!data || data.length === 0) {
-                    list.innerHTML = '<p>まだお悩みは届いていないみたい。</p>';
-                    return;
-                }
-                data.slice(0, 20).forEach(q => {
-                    const item = document.createElement('div');
-                    item.className = 'question-item';
-                    item.innerHTML = `
-                        <div style="font-size:0.8rem; color:#bbb;">${q.date}</div>
-                        <a href="post.html?file=${q.file}">${q.title}</a>
-                    `;
-                    list.appendChild(item);
-                });
-            })
-            .catch(err => {
-                document.getElementById('article-list').innerHTML = '<p>読み込みエラーよ。</p>';
+                const latest = data[0];
+                document.getElementById('latest-post').innerHTML = `
+                    <p style="color:#999;">${latest.date}</p>
+                    <h2><a href="${latest.url}" style="text-decoration:none; color:#333;">${latest.title}</a></h2>
+                    <p>${latest.description}</p>
+                `;
             });
     </script>
 </body>

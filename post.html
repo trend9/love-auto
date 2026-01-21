@@ -2,47 +2,37 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>結姉さんの回答</title>
+    <title>お悩み相談 - 結姉さんの相談室</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body { background-color: #fff9fb; margin: 0; font-family: sans-serif; }
-        header { background: #d63384; color: white; padding: 15px 0; }
-        .header-inner { max-width: 800px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; }
-        .header-inner a { color: white; text-decoration: none; font-weight: bold; }
-        .yui-mini { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }
-
-        #post-content { max-width: 800px; margin: 30px auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        h1 { color: #d63384; border-bottom: 2px solid #ffc0cb; padding-bottom: 10px; font-size: 1.5rem; }
-        h2 { font-size: 1.2rem; color: #555; margin-top: 30px; border-left: 5px solid #ffc0cb; padding-left: 15px; }
-        p { line-height: 1.8; color: #333; }
-        .back-box { text-align: center; margin: 40px; }
-        .btn-back { background: #d63384; color: white; padding: 12px 30px; text-decoration: none; border-radius: 30px; }
+        .site-wrapper { display: grid; grid-template-columns: 1fr minmax(auto, 800px) 1fr; gap: 20px; }
+        main { grid-column: 2; background: white; padding: 40px; min-height: 100vh; }
+        .letter-box { background: #fffafb; padding: 30px; border-radius: 15px; border-left: 5px solid #ffc0cb; margin: 20px 0; line-height: 1.8; }
+        .answer-box { margin-top: 40px; line-height: 1.8; }
+        .sidebar-right { grid-column: 3; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .yui-img { width: 100%; height: auto; }
+        @media (max-width: 900px) { .site-wrapper { grid-template-columns: 1fr; } .sidebar-right { display: none; } }
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-inner">
-            <a href="index.html">← 結姉さんの相談室トップへ</a>
-        </div>
-    </header>
-
-    <main>
-        <article id="post-content">記事を読み込み中...</article>
-        <div class="back-box">
-            <a href="index.html" class="btn-back">他のお悩みを見る</a>
-        </div>
-    </main>
-
+    <div class="site-wrapper">
+        <div></div>
+        <main id="post-content">
+            <p>読み込み中...</p>
+        </main>
+        <aside class="sidebar-right">
+            <img src="yui.png" alt="結姉さん" class="yui-img">
+        </aside>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         const params = new URLSearchParams(window.location.search);
         const file = params.get('file');
         if (file) {
-            fetch(file + '?t=' + Date.now())
+            fetch(file)
                 .then(res => res.text())
-                .then(md => {
-                    document.getElementById('post-content').innerHTML = marked.parse(md);
+                .then(text => {
+                    document.getElementById('post-content').innerHTML = marked.parse(text) + '<br><a href="index.html" style="color:#d63384;">← 戻る</a>';
                 });
         }
     </script>
