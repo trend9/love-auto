@@ -37,8 +37,19 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/questions.json posts/*.html
-          git commit -m "Update: New Radio Letter [skip ci]" || echo "No changes"
+          
+          # フォルダを確実に用意
+          mkdir -p data posts
+          
+          # JSONをadd（なければスキップ）
+          git add data/questions.json || true
+          
+          # posts内のhtmlがあればadd（ここがエラーの原因だったのでif文で保護）
+          if [ "$(ls -A posts/*.html 2>/dev/null)" ]; then
+            git add posts/*.html
+          fi
+          
+          git commit -m "Update: Yui Radio System [skip ci]" || echo "No changes"
           git push origin main --force
 
       - name: Prepare Site for Deployment
@@ -46,7 +57,10 @@ jobs:
           mkdir -p _site/data _site/posts
           cp index.html post.html archive.html profile.html style.css *.png _site/ || true
           if [ -f "data/questions.json" ]; then cp data/questions.json _site/data/; fi
-          if [ -d "posts" ]; then cp posts/*.html _site/posts/ || true; fi
+          # postsフォルダの中身があればコピー
+          if [ "$(ls -A posts/*.html 2>/dev/null)" ]; then
+            cp posts/*.html _site/posts/
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
