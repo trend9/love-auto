@@ -1,211 +1,163 @@
-import os
 import json
-import time
+import os
+import datetime
 import random
-from datetime import datetime
 from llama_cpp import Llama
 
-# =====================
-# パス設定
-# =====================
-MODEL_PATH = "./models/model.gguf"
-POST_TEMPLATE = "post_template.html"
-POST_DIR = "posts"
-DATA_DIR = "data"
-JSON_PATH = os.path.join(DATA_DIR, "questions.json")
-INDEX_PATH = "index.html"
-ARCHIVE_PATH = "archive.html"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+POST_DIR = os.path.join(BASE_DIR, "posts")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+QUESTIONS_JSON = os.path.join(DATA_DIR, "questions.json")
+POST_TEMPLATE = os.path.join(BASE_DIR, "post_template.html")
+
+MAX_INDEX_ITEMS = 10        # ← index に表示する最新件数
+RELATED_LINKS = 3           # ← 記事下に出す内部リンク数
 
 os.makedirs(POST_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# =====================
-# LLM 初期化
-# =====================
+if not os.path.exists(QUESTIONS_JSON):
+    with open(QUESTIONS_JSON, "w", encoding="utf-8") as f:
+        json.dump([], f, ensure_ascii=False, indent=2)
+
+with open(QUESTIONS_JSON, "r", encoding="utf-8") as f:
+    past = json.load(f)
+
 llm = Llama(
-    model_path=MODEL_PATH,
-    n_ctx=2048,
-    n_threads=os.cpu_count(),
-    chat_format="llama-3"
+    model_path="./models/model.gguf",
+    n_ctx=1024,
+    n_threads=4
 )
 
-# =====================
-# JSON 読み込み
-# =====================
-if os.path.exists(JSON_PATH):
-    with open(JSON_PATH, "r", encoding="utf-8") as f:
-        questions = json.load(f)
-else:
-    questions = []
+now = datetime.datetime.now()
+date_str = now.strftime("%Y/%m/%d %H:%M")
+file_stamp = now.strftime("%Y%m%d_%H%M%S")
 
-used_titles = {q["title"] for q in questions if q.get("title")}
+# ======================
+# テーマ生成（被り防止）
+# ======================
+past_titles = [p["title"] for p in past][-20:]
 
-# =====================
-# テーマ（被り防止）
-# =====================
-themes = [
-    "結婚の焦り",
-    "周囲と比べてしまう恋",
-    "年齢への不安",
-    "将来が見えない恋愛",
-    "復縁を諦めきれない気持ち",
-    "好きだけど進めない関係"
-]
+theme_prompt = f"""
+20〜30代女性向けの恋愛相談テーマを1つだけ出してください。
+過去と被らないこと。
 
-random.shuffle(themes)
-theme = next((t for t in themes if t not in used_titles), random.choice(themes))
+過去テーマ:
+{past_titles}
 
-# =====================
-# プロンプト
-# =====================
-PROMPT = f"""
-あなたは35歳の恋愛相談ラジオのパーソナリティ「結姉さん」です。
-
-以下をすべて生成してください。
-記号やJSONは使わず、自然な日本語で書いてください。
-
-【ラジオネーム】
-【SEOタイトル】
-【相談文】
-【回答文】（100〜200文字）
-【メタディスクリプション】（100文字前後）
-
-テーマ：{theme}
+条件:
+・短い日本語
+・感情が伝わる
+・タイトルのみ
 """
 
-# =====================
-# AI生成（リトライ）
-# =====================
-def generate():
-    for _ in range(3):
-        result = llm(PROMPT, max_tokens=900, temperature=0.7)
-        choice = result["choices"][0]
+theme = llm(theme_prompt, max_tokens=64)["choices"][0]["text"].strip()
 
-        if "message" in choice and "content" in choice["message"]:
-            text = choice["message"]["content"].strip()
-        else:
-            text = choice.get("text", "").strip()
+# ======================
+# お便り
+# ======================
+letter_prompt = f"""
+次のテーマでラジオ相談のお便りを書いてください。
 
-        if text:
-            return text
+テーマ: {theme}
 
-        time.sleep(1)
+条件:
+・ラジオネームあり（◯◯ちゃん）
+・一人称
+・300〜400文字
+"""
 
-    raise RuntimeError("AI生成失敗")
+letter = llm(letter_prompt, max_tokens=600)["choices"][0]["text"].strip()
 
-raw = generate()
+# ======================
+# 回答
+# ======================
+answer_prompt = f"""
+あなたは恋愛相談ラジオの回答者「結姉さん」です。
 
-# =====================
-# 正しい抽出（ブロック方式）
-# =====================
-def extract_block(label, text):
-    lines = text.splitlines()
-    collecting = False
-    buffer = []
+構成:
+1. 共感
+2. 悩みの核心
+3. 視点の転換
+4. 優しい一言
 
-    for line in lines:
-        if line.strip().startswith(label):
-            collecting = True
-            continue
-        if collecting and line.strip().startswith("【"):
-            break
-        if collecting:
-            buffer.append(line)
+禁止:
+・説教
+・〜すべき
+・専門用語
 
-    return "\n".join(buffer).strip()
+相談内容:
+{letter}
+"""
 
-name = extract_block("【ラジオネーム】", raw)
-title = extract_block("【SEOタイトル】", raw) or theme
-letter = extract_block("【相談文】", raw)
-answer = extract_block("【回答文】", raw)
-meta = extract_block("【メタディスクリプション】", raw)
+answer = llm(answer_prompt, max_tokens=700)["choices"][0]["text"]
+answer = answer.replace("【回答文】", "").strip()
 
-# =====================
-# 日付・パス
-# =====================
-now = datetime.now()
-timestamp = now.strftime("%Y%m%d_%H%M%S")
-date_str = now.strftime("%Y/%m/%d %H:%M")
+# ======================
+# メタ description
+# ======================
+meta_prompt = f"""
+次の記事のメタディスクリプションを書いてください。
 
-post_filename = f"{timestamp}.html"
-post_path = os.path.join(POST_DIR, post_filename)
-url = f"posts/{post_filename}"
+条件:
+・120文字以内
+・安心感
+・SEOタイトル等は含めない
+"""
 
-# =====================
+meta = llm(meta_prompt, max_tokens=150)["choices"][0]["text"].strip()
+
+# ======================
+# ラジオネーム抽出
+# ======================
+name = "匿名"
+for line in letter.splitlines():
+    if "ちゃん" in line:
+        name = line.strip()
+        break
+
+# ======================
+# 内部リンク生成
+# ======================
+related_html = ""
+if len(past) >= RELATED_LINKS:
+    related = random.sample(past, RELATED_LINKS)
+    related_html += "<ul class='related-posts'>"
+    for r in related:
+        related_html += f"<li><a href='../{r['url']}'>{r['title']}</a></li>"
+    related_html += "</ul>"
+
+# ======================
 # HTML生成
-# =====================
+# ======================
 with open(POST_TEMPLATE, "r", encoding="utf-8") as f:
-    template = f.read()
+    tpl = f.read()
 
 html = (
-    template
-    .replace("{{TITLE}}", title)
-    .replace("{{META}}", meta)
-    .replace("{{DATE}}", date_str)
-    .replace("{{NAME}}", name)
-    .replace("{{LETTER}}", letter)
-    .replace("{{ANSWER}}", answer)
+    tpl.replace("{{TITLE}}", theme)
+       .replace("{{META}}", meta)
+       .replace("{{DATE}}", date_str)
+       .replace("{{NAME}}", name)
+       .replace("{{LETTER}}", letter)
+       .replace("{{ANSWER}}", answer)
+       .replace("{{RELATED}}", related_html)
 )
 
-with open(post_path, "w", encoding="utf-8") as f:
+post_filename = f"{file_stamp}.html"
+with open(os.path.join(POST_DIR, post_filename), "w", encoding="utf-8") as f:
     f.write(html)
 
-# =====================
-# JSON更新
-# =====================
-questions.insert(0, {
-    "title": title,
-    "url": url,
+# ======================
+# questions.json 更新（最新が先頭）
+# ======================
+past.insert(0, {
+    "title": theme,
+    "url": f"posts/{post_filename}",
     "date": date_str,
     "description": meta
 })
 
-with open(JSON_PATH, "w", encoding="utf-8") as f:
-    json.dump(questions, f, ensure_ascii=False, indent=2)
+with open(QUESTIONS_JSON, "w", encoding="utf-8") as f:
+    json.dump(past, f, ensure_ascii=False, indent=2)
 
-# =====================
-# index 更新（既存仕様前提）
-# =====================
-def build_list(items):
-    return "\n".join(
-        f'<li><a href="{q["url"]}">{q["title"]}</a><span>{q["date"]}</span></li>'
-        for q in items[:5]
-    )
-
-with open(INDEX_PATH, "r", encoding="utf-8") as f:
-    index_html = f.read()
-
-index_html = index_html.replace("<!-- LATEST_POSTS -->", build_list(questions))
-
-with open(INDEX_PATH, "w", encoding="utf-8") as f:
-    f.write(index_html)
-
-# =====================
-# archive.html 自動生成
-# =====================
-archive_items = "\n".join(
-    f'<li><a href="{q["url"]}">{q["title"]}</a> <span>{q["date"]}</span></li>'
-    for q in questions
-)
-
-archive_html = f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>過去の恋愛相談一覧</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<h1>過去の恋愛相談</h1>
-<ul>
-{archive_items}
-</ul>
-<a href="index.html">トップへ戻る</a>
-</body>
-</html>
-"""
-
-with open(ARCHIVE_PATH, "w", encoding="utf-8") as f:
-    f.write(archive_html)
-
-print("=== 記事生成・反映 完了 ===")
+print("生成完了:", post_filename)

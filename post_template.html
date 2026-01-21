@@ -1,31 +1,42 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>{{TITLE}}</title>
-    <meta name="description" content="{{META}}">
-    <meta property="og:title" content="{{TITLE}}">
-    <meta property="og:description" content="{{META}}">
-    <meta property="og:type" content="article">
-    <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
-    <link rel="stylesheet" href="../style.css">
+  <meta charset="UTF-8">
+  <title>{{TITLE}}</title>
+
+  <meta name="description" content="{{META}}">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{META}}">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="../style.css">
 </head>
+
 <body>
-    <div class="post-container">
-        <p style="color:#999; font-size:0.9rem;">更新日: {{DATE}}</p>
+  <div class="post-container">
 
-        <h1>{{NAME}}さんからのお便り</h1>
+    <p style="color:#999; font-size:0.9rem;">更新日: {{DATE}}</p>
 
-        <div class="letter-section">
-            <p style="white-space: pre-wrap;">{{LETTER}}</p>
-        </div>
+    <h1>{{NAME}}さんからのお便り</h1>
 
-        <div class="answer-section">
-            <h3>結姉さんからの回答</h3>
-            <p style="white-space: pre-wrap;">{{ANSWER}}</p>
-        </div>
-
-        <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
+    <div class="letter-section">
+      <p style="white-space: pre-wrap;">{{LETTER}}</p>
     </div>
+
+    <div class="answer-section">
+      <h3>結姉さんからの回答</h3>
+      <p style="white-space: pre-wrap;">{{ANSWER}}</p>
+    </div>
+
+    <div class="related-section">
+      <h3>こんな相談も読まれています</h3>
+      {{RELATED}}
+    </div>
+
+    <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
+
+  </div>
 </body>
 </html>
