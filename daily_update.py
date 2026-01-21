@@ -13,45 +13,39 @@ GENERATE_COUNT = 20
 def ai_generate_letter(llm, index):
     print(f"結姉さんが{index+1}通目のお便りを執筆中...")
     
-    themes = ["片思いの切なさ", "復縁の可能性", "不倫や浮気の悩み", "遠距離恋愛の寂しさ", "結婚への焦り", "マッチングアプリの出会い", "社内恋愛の秘密", "倦怠期の乗り越え方", "失恋の傷跡", "嫉妬心との付き合い方"]
+    themes = ["既婚者の彼との恋", "マッチングアプリで会った人の嘘", "元カレへの未練", "職場の年下男性との距離感", "結婚を渋る彼への不信感", "誰にも言えない秘密の恋", "マッチングアプリ疲れ", "音信不通の理由", "同棲中のマンネリ", "親に反対されている恋"]
     theme = random.choice(themes)
 
     try:
-        # Llama-3の構造に合わせた、日本語強制プロンプト
+        # AIに具体的な「役割」と「禁止事項」を徹底
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-あなたは日本の女性「結姉さん（ゆいねえさん）」です。
-【重要：日本語以外の言語は禁止】
-・回答はすべて、美しく自然な「日本語」のみで行ってください。
-・英語、中国語は一文字も出力してはいけません。
-・RadioName, Letter, Answer, Description の4項目を必ず作成してください。
-・アスタリスク(*)やカッコ[]、記号は一切使わないでください。<|eot_id|><|start_header_id|>user<|end_header_id|>
-テーマ「{theme}」でお悩み相談を作成してください。日本語のみでお願いします。<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+あなたは日本の「結姉さん（ゆいねえさん）」という、ラジオパーソナリティのような包容力のある女性です。
+【絶対厳守】
+1. ラジオネームは必ず「ひらがな」や「カタカナ」を使った、一人の女性らしい名前にしてください（例：ゆずき、メロンパンなど）。テーマ名を名前にしないでください。
+2. Letter（お悩み）は「結姉さん、聞いて…」から始め、状況が目に浮かぶように具体的に日本語で書いてください（300文字程度）。
+3. Answer（回答）は、相談者の心に寄り添い、時に優しく、時に鋭くアドバイスしてください（400文字程度）。定型文は禁止です。
+4. すべて日本語で出力してください。
+5. 記号(*, [], #)は一切使わないでください。<|eot_id|><|start_header_id|>user<|end_header_id|>
+テーマ「{theme}」について、一人のお悩み相談を書き上げてください。<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 RadioName:"""
 
-        output = llm(prompt, max_tokens=1200, temperature=0.8, stop=["<|eot_id|>", "---"])
+        output = llm(prompt, max_tokens=1500, temperature=0.85, stop=["<|eot_id|>"])
         full_text = "RadioName:" + output['choices'][0]['text'].strip()
         
         res = {}
         for line in full_text.split('\n'):
-            # 記号の徹底除去
             line = line.replace('*', '').replace('[', '').replace(']', '').replace('#', '').strip()
             if 'RadioName:' in line: res['radio_name'] = line.split(':', 1)[1].strip()
             if 'Letter:' in line: res['letter'] = line.split(':', 1)[1].strip()
             if 'Answer:' in line: res['answer'] = line.split(':', 1)[1].strip()
             if 'Description:' in line: res['description'] = line.split(':', 1)[1].strip()
         
-        # --- 検閲ロジック ---
-        # 1. 4項目揃っているか
-        if len(res) < 4: return None
-        
-        # 2. 英語混入チェック (アルファベットが10文字以上あれば英語とみなし破棄)
-        eng_chars = re.findall(r'[a-zA-Z]', res.get('answer', ''))
-        if len(eng_chars) > 10:
-            print(f"【検閲】英語の混入を検知したため、再生成します。")
+        # 検閲: 項目欠け、またはテーマ名がRadioNameに含まれている場合
+        if len(res) < 4 or theme in res.get('radio_name', ''):
             return None
         
-        # 3. テンプレート文字の残存チェック
-        if "例:" in str(res.values()) or "考案" in str(res.values()):
+        # 英語混入チェック
+        if len(re.findall(r'[a-zA-Z]', res.get('answer', ''))) > 15:
             return None
 
         return res
@@ -69,6 +63,7 @@ def update_system(new_data_list):
             try: db = json.load(f)
             except: db = []
 
+    # テンプレート読み込み
     with open("post_template.html", "r", encoding="utf-8") as f:
         template = f.read()
 
@@ -79,15 +74,22 @@ def update_system(new_data_list):
         display_date = now.strftime("%Y/%m/%d %H:%M")
         file_name = f"{time_suffix}.html"
         
-        content = template.replace("{{TITLE}}", data['radio_name'] + "さんからのお便り")\
+        # SEO用タイトルと説明文（AIが生成したものを利用）
+        seo_title = f"{data['radio_name']}さんのお悩み相談「{data['description'][:20]}...」 | 結姉さんの恋愛相談所"
+        seo_desc = data['description']
+        
+        # HTML置換（SEOメタタグ部分も含む）
+        content = template.replace("{{SEO_TITLE}}", seo_title)\
+                          .replace("{{SEO_DESCRIPTION}}", seo_desc)\
+                          .replace("{{TITLE}}", data['radio_name'] + "さんからのお便り")\
                           .replace("{{LETTER}}", data['letter'])\
                           .replace("{{ANSWER}}", data['answer'])\
-                          .replace("{{DESCRIPTION}}", data['description'])\
                           .replace("{{DATE}}", display_date)
         
         with open(f"posts/{file_name}", "w", encoding="utf-8") as f:
             f.write(content)
 
+        # JSON更新（蓄積）
         db.insert(0, {
             "title": data['radio_name'] + "さんのお悩み",
             "url": f"posts/{file_name}",
@@ -96,7 +98,7 @@ def update_system(new_data_list):
         })
 
     with open(db_path, "w", encoding="utf-8") as f:
-        json.dump(db[:1000], f, ensure_ascii=False, indent=4)
+        json.dump(db[:2000], f, ensure_ascii=False, indent=4) # 蓄積数を2000件に増加
 
 def main():
     if not os.path.exists(MODEL_PATH): return
@@ -104,8 +106,7 @@ def main():
     
     generated_results = []
     attempts = 0
-    # 20件揃うまで粘る（最大50回試行）
-    while len(generated_results) < GENERATE_COUNT and attempts < 50:
+    while len(generated_results) < GENERATE_COUNT and attempts < 60:
         res = ai_generate_letter(llm, len(generated_results))
         if res:
             generated_results.append(res)
@@ -113,7 +114,7 @@ def main():
     
     if generated_results:
         update_system(generated_results)
-        print(f"完了：{len(generated_results)}件のピュアな日本語記事を生成したわ。")
+        print(f"完了：{len(generated_results)}件の記事を生成しました。")
 
 if __name__ == "__main__":
     main()
