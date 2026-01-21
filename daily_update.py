@@ -1,112 +1,255 @@
-import os, json, random, re
-from datetime import datetime, timedelta
+import os, json, re, random
+from datetime import datetime
 from llama_cpp import Llama
 
 MODEL_PATH = "./models/model.gguf"
-GENERATE_COUNT = 5 
+GENERATE_COUNT = 5
+MAX_RETRY = 3
 
-def clean_text(text):
-    if not text: return ""
-    # 不要なプレフィックスや記号を徹底削除
-    text = re.sub(r'(名前:|相談:|回答:|要約:|タイトル:|RadioName:|Letter:|Answer:|Description:|SEOTitle:|結姉さん:)', '', text)
-    text = re.sub(r'(\*\*|\[|\]|\*|#|<\|.*?\|>)', '', text).strip()
-    return text
+ANSWER_MIN = 100
+ANSWER_MAX = 200
 
-def ai_generate_letter(llm, theme, index):
-    print(f"--- 記事 {index+1}/{GENERATE_COUNT} 生成開始: {theme} ---")
-    
-    # ご提案の「AIが理解しやすいシンプルな指示」を構成
-    prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-あなたは30代前半の日本人女性「結姉さん」です。以下の4点を日本語で作成してください。
-1.名前: 日本人女性の名前
-2.タイトル: 恋愛相談掲示板にありそうな簡潔なタイトル
-3.相談: テーマ「{theme}」に基づいた具体的な悩み
-4.回答: 寄り添いながら解決へ導く100文字前後のアドバイス
-5.要約: 相談と回答を簡潔にまとめた文
-<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-1.名前:"""
+# -------------------------
+# Utility
+# -------------------------
 
-    try:
-        # n_ctxを512に絞り、生成に集中させる
-        output = llm(prompt, max_tokens=1000, temperature=0.8, stop=["<|eot_id|>"])
-        raw_text = "1.名前:" + output['choices'][0]['text'].strip()
-        
-        # デフォルト値を設定
-        res = {"radio_name": f"かなこ_{index}", "letter": "", "answer": "", "description": "", "seo_title": ""}
+def clean(text):
+    if not text:
+        return ""
+    text = re.sub(r'[<>#*\[\]]', '', text)
+    return text.strip()
 
-        # より確実な分割（1. 2. などの数字を目印にする）
-        lines = raw_text.split('\n')
-        for line in lines:
-            if '1.名前:' in line: res['radio_name'] = clean_text(line.split(':', 1)[1])
-            if '2.タイトル:' in line: res['seo_title'] = clean_text(line.split(':', 1)[1])
-            if '3.相談:' in line: res['letter'] = clean_text(line.split(':', 1)[1])
-            if '4.回答:' in line: res['answer'] = clean_text(line.split(':', 1)[1])
-            if '5.要約:' in line: res['description'] = clean_text(line.split(':', 1)[1])
+def extract(label, text):
+    m = re.search(rf"{label}[：:]\s*(.*?)(?=\n\d\.|$)", text, re.S)
+    return clean(m.group(1)) if m else ""
 
-        # 最終チェック：もしAIがタイトルや回答を書き漏らした時だけテーマから補完
-        if len(res['seo_title']) < 3: res['seo_title'] = f"{theme}についての悩み相談"
-        if len(res['letter']) < 10: res['letter'] = f"{theme}のことで悩んでいます。どうすればいいでしょうか。"
-        if len(res['answer']) < 10: res['answer'] = "あなたの気持ち、よくわかるわ。まずはゆっくり深呼吸して、自分を大切にしてね。"
-        if len(res['description']) < 5: res['description'] = res['letter'][:50]
+def char_len(text):
+    return len(text)
 
-        return res
-    except Exception as e:
-        print(f"エラー: {e}")
-        return None
+# -------------------------
+# Theme Generation
+# -------------------------
 
-# update_system関数とmain関数は前回のものをそのまま利用
-def update_system(new_data_list):
+def load_recent_themes(limit=20):
+    path = "data/questions.json"
+    if not os.path.exists(path):
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+        except:
+            return []
+    return [q["title"] for q in data[:limit]]
+
+def generate_themes(llm, avoid_titles, count):
+    avoid_text = " / ".join(avoid_titles[:10])
+
+    prompt = f"""System:
+あなたは恋愛相談サイトの編集者です。
+
+User:
+以下は最近使われた記事タイトルです。
+これらと被らない「恋愛相談テーマ」を {count} 個考えてください。
+
+最近のタイトル:
+{avoid_text}
+
+条件:
+・短い名詞句
+・日本語
+・重複禁止
+・番号付きで出力
+
+Assistant:
+"""
+
+    out = llm(
+        prompt,
+        max_tokens=200,
+        temperature=0.6,
+        repeat_penalty=1.1,
+        stop=["6."]
+    )["choices"][0]["text"]
+
+    themes = re.findall(r'\d+\.\s*(.+)', out)
+    return themes[:count]
+
+# -------------------------
+# AI Article Generation
+# -------------------------
+
+def generate_article(llm, theme):
+    prompt = f"""System:
+あなたは35歳の日本人女性「ゆい姉さん」です。
+恋愛相談に慣れており、優しく現実的に答えます。
+
+User:
+以下のテーマで恋愛相談記事を作ってください。
+テーマ: {theme}
+
+形式を必ず守ってください。
+
+1.ラジオネーム:
+2.SEOタイトル:
+3.相談文:
+4.回答文:
+5.メタディスクリプション:
+
+Assistant:
+"""
+
+    out = llm(
+        prompt,
+        max_tokens=400,
+        temperature=0.5,
+        top_p=0.9,
+        repeat_penalty=1.15,
+        stop=["6."]
+    )["choices"][0]["text"]
+
+    data = {
+        "radio_name": extract("1.ラジオネーム", out),
+        "seo_title": extract("2.SEOタイトル", out),
+        "letter": extract("3.相談文", out),
+        "answer": extract("4.回答文", out),
+        "description": extract("5.メタディスクリプション", out),
+    }
+
+    return data
+
+def validate_article(data):
+    if len(data["seo_title"]) < 8:
+        return False
+    if len(data["letter"]) < 50:
+        return False
+    alen = char_len(data["answer"])
+    if alen < ANSWER_MIN or alen > ANSWER_MAX:
+        return False
+    return True
+
+# -------------------------
+# Save & Update
+# -------------------------
+
+def save_article(data, template):
     os.makedirs("posts", exist_ok=True)
+    now = datetime.now()
+    stamp = now.strftime("%Y%m%d_%H%M%S")
+    display_date = now.strftime("%Y/%m/%d %H:%M")
+    filename = f"posts/{stamp}.html"
+
+    html = (
+        template
+        .replace("{{SEO_TITLE}}", data["seo_title"])
+        .replace("{{SEO_DESCRIPTION}}", data["description"][:100])
+        .replace("{{TITLE}}", f'{data["radio_name"]}さんからのお便り')
+        .replace("{{LETTER}}", data["letter"])
+        .replace("{{ANSWER}}", data["answer"])
+        .replace("{{DATE}}", display_date)
+    )
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    return {
+        "title": data["seo_title"],
+        "url": filename,
+        "date": display_date,
+        "description": data["description"]
+    }
+
+def update_json(new_items):
     os.makedirs("data", exist_ok=True)
-    db_path = "data/questions.json"
+    path = "data/questions.json"
     db = []
-    if os.path.exists(db_path):
-        with open(db_path, "r", encoding="utf-8") as f:
-            try: db = json.load(f)
-            except: db = []
+
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            try:
+                db = json.load(f)
+            except:
+                pass
+
+    db = new_items + db
+    db = db[:1000]
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(db, f, ensure_ascii=False, indent=2)
+
+    return db
+
+def update_index(db):
+    if not os.path.exists("index.html"):
+        return
+
+    items = ""
+    for q in db[:5]:
+        items += f'<li><a href="{q["url"]}">{q["title"]}</a><span>{q["date"]}</span></li>\n'
+
+    with open("index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    html = re.sub(
+        r'<!-- LATEST_START -->.*?<!-- LATEST_END -->',
+        f'<!-- LATEST_START -->\n<ul>\n{items}</ul>\n<!-- LATEST_END -->',
+        html,
+        flags=re.S
+    )
+
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(html)
+
+def update_archive(db):
+    if not os.path.exists("archive.html"):
+        return
+
+    rows = ""
+    for q in db:
+        rows += f'<li><a href="{q["url"]}">{q["title"]}</a><span>{q["date"]}</span></li>\n'
+
+    with open("archive.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    html = re.sub(
+        r'<!-- ARCHIVE_START -->.*?<!-- ARCHIVE_END -->',
+        f'<!-- ARCHIVE_START -->\n<ul>\n{rows}</ul>\n<!-- ARCHIVE_END -->',
+        html,
+        flags=re.S
+    )
+
+    with open("archive.html", "w", encoding="utf-8") as f:
+        f.write(html)
+
+# -------------------------
+# Main
+# -------------------------
+
+def main():
+    if not os.path.exists(MODEL_PATH):
+        return
+
+    llm = Llama(model_path=MODEL_PATH, n_ctx=1024, verbose=False)
 
     with open("post_template.html", "r", encoding="utf-8") as f:
         template = f.read()
 
-    now = datetime.now()
-    for i, data in enumerate(new_data_list):
-        time_suffix = (now + timedelta(seconds=i)).strftime("%Y%m%d_%H%M%S")
-        display_date = now.strftime("%Y/%m/%d %H:%M")
-        file_name = f"{time_suffix}.html"
-        
-        content = template.replace("{{SEO_TITLE}}", data['seo_title'])\
-                          .replace("{{SEO_DESCRIPTION}}", data['description'][:100])\
-                          .replace("{{TITLE}}", data['radio_name'] + "さんからのお便り")\
-                          .replace("{{LETTER}}", data['letter'])\
-                          .replace("{{ANSWER}}", data['answer'])\
-                          .replace("{{DATE}}", display_date)
-        
-        with open(f"posts/{file_name}", "w", encoding="utf-8") as f:
-            f.write(content)
+    recent_titles = load_recent_themes()
+    themes = generate_themes(llm, recent_titles, GENERATE_COUNT)
 
-        db.insert(0, {
-            "title": data['seo_title'],
-            "url": f"posts/{file_name}",
-            "date": display_date,
-            "description": data['description']
-        })
-    with open(db_path, "w", encoding="utf-8") as f:
-        json.dump(db[:1000], f, ensure_ascii=False, indent=4)
+    new_items = []
 
-def main():
-    if not os.path.exists(MODEL_PATH): return
-    llm = Llama(model_path=MODEL_PATH, n_ctx=512, verbose=False)
-    themes = ["復縁の悩み", "マッチングアプリの不安", "既婚者への恋", "結婚の焦り", "社内恋愛の秘密"]
-    random.shuffle(themes)
-    
-    generated_results = []
-    for i, theme in enumerate(themes[:GENERATE_COUNT]):
-        res = ai_generate_letter(llm, theme, i)
-        if res: generated_results.append(res)
-    
-    if generated_results:
-        update_system(generated_results)
-        print(f"完了：{len(generated_results)}件の記事を生成しました。")
+    for theme in themes:
+        for _ in range(MAX_RETRY):
+            data = generate_article(llm, theme)
+            if validate_article(data):
+                item = save_article(data, template)
+                new_items.append(item)
+                break
+
+    if new_items:
+        db = update_json(new_items)
+        update_index(db)
+        update_archive(db)
 
 if __name__ == "__main__":
     main()
