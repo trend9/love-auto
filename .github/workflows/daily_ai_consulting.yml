@@ -1,54 +1,48 @@
 name: Daily Yui AI Consulting
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
-  workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
 
 jobs:
   update-site:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install llama-cpp-python
 
-      - name: Download GGUF model (validated)
+      - name: Download AI model
         run: |
           mkdir -p models
-          if [ ! -f models/model.gguf ]; then
-            curl -L --fail \
-              https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf \
-              -o models/model.gguf
-          fi
-          ls -lh models/model.gguf
-          test $(stat -c%s models/model.gguf) -gt 4000000000
-
+          curl -L --fail \
+            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf \
+            -o models/model.gguf
 
       - name: Run generator
         run: python daily_update.py
 
-      - name: Commit & Push
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add posts/*.html data/questions.json archive.html index.html
-
-          git commit -m "Daily update by Yui AI" || echo "No changes"
-
+          git add .
+          git commit -m "Daily update by Yui AI" || exit 0
           git push origin main --force
