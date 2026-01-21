@@ -23,8 +23,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install feedparser llama-cpp-python requests beautifulsoup4
+        run: pip install feedparser llama-cpp-python requests beautifulsoup4
 
       - name: Download AI Model
         run: |
@@ -38,27 +37,16 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # publicの内容をルートに同期
-          cp -r public/* . || true
-          
-          # フォルダが存在しない・ファイルがない場合でもエラーにしない
-          git add data/questions.json index.html post.html archive.html profile.html style.css *.png || true
-          
-          # postsフォルダの中身があれば追加（ワイルドカードエラー対策）
-          if [ -d "posts" ]; then
-            git add posts/*.html || true
-          fi
-          
-          git commit -m "Update: Archive persistent posts [skip ci]" || echo "No changes"
+          git add data/questions.json posts/*.html
+          git commit -m "Update: New Radio Letter [skip ci]" || echo "No changes"
           git push origin main --force
 
-      - name: Prepare Site Artifact
+      - name: Prepare Site for Deployment
         run: |
           mkdir -p _site/data _site/posts
           cp index.html post.html archive.html profile.html style.css *.png _site/ || true
           if [ -f "data/questions.json" ]; then cp data/questions.json _site/data/; fi
-          if [ -d "posts" ]; then cp -r posts/* _site/posts/ || true; fi
+          if [ -d "posts" ]; then cp posts/*.html _site/posts/ || true; fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

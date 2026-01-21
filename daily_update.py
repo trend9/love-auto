@@ -3,16 +3,14 @@ from bs4 import BeautifulSoup
 import os
 import json
 import shutil
-import re
 from datetime import datetime
 from llama_cpp import Llama
 
 # 設定
 TARGET_URL = "https://chiebukuro.yahoo.co.jp/category/2078675272/question/list"
 MODEL_PATH = "./models/model.gguf"
-
-# 厳格なNGワードリスト
-NG_WORDS = ["キャンペーン", "プレゼント", "実施", "開始", "提供", "円", "割引", "カウンセリング", "PR", "イベント", "ニュース", "undefined"]
+# 鉄壁フィルター：広告要素を徹底排除
+NG_WORDS = ["キャンペーン", "プレゼント", "実施", "開始", "提供", "円", "割引", "カウンセリング", "PR", "イベント", "ニュース", "アットプレス", "ウォーカープラス", "undefined"]
 
 def scrape_questions():
     print("知恵袋からお悩みを厳選スキャン中...")
@@ -25,13 +23,10 @@ def scrape_questions():
         questions = []
         for item in items:
             title = item.get_text()
-            # フィルター：NGワードが含まれていたらスキップ
+            # フィルター
             if any(word in title for word in NG_WORDS):
                 continue
-            questions.append({
-                "title": title,
-                "url": item.get('href')
-            })
+            questions.append({"title": title, "url": item.get('href')})
         return questions
     except Exception as e:
         print(f"Scrape Error: {e}")
@@ -43,11 +38,10 @@ def ai_process(raw_title):
         if not os.path.exists(MODEL_PATH): return None
         llm = Llama(model_path=MODEL_PATH, n_ctx=2048, verbose=False)
         
-        # 指示を強化：広告っぽくても個人の悩みに変換させる
         prompt = f"""[System: あなたは包容力のある日本の女性「結姉さん」です。
-1. 相談内容から可愛い「ラジオネーム」を考案してください。
-2. 相談内容がもしニュースや広告のような硬い文章でも、必ず「一人の悩める女性からの個人的な相談」として、結姉さん、聞いて…で始まるお便り形式にリライトしてください。
-3. 日本語のみ。英語禁止。]
+1. 可愛い「ラジオネーム」を考案してください。
+2. 相談内容を必ず「結姉さん、聞いて…」で始まる、一人の女性からの個人的なお悩み（お便り形式）に書き換えてください。
+3. 日本語のみ。]
 
 相談元ネタ: {raw_title}
 
@@ -55,9 +49,9 @@ def ai_process(raw_title):
 RadioName: [考案した名前]
 Letter: [リライトした文章]
 Answer: [結姉さんの回答]
-Description: [SEO用の100文字程度の要約]"""
+Description: [100文字要約]"""
 
-        output = llm(prompt, max_tokens=1500, temperature=0.7, stop=["[System:"], echo=False)
+        output = llm(prompt, max_tokens=1000, temperature=0.7, stop=["[System:"], echo=False)
         text = output['choices'][0]['text'].strip()
         
         res = {}
@@ -71,36 +65,44 @@ Description: [SEO用の100文字程度の要約]"""
     except:
         return None
 
-def update_archive_and_pages(new_data):
+def update_files(new_data):
     today_str = datetime.now().strftime("%Y%m%d")
     display_date = datetime.now().strftime("%Y/%m/%d")
-    # 404防止のため、生成されるパスとJSONのurlを一致させる
     file_name = f"{today_str}.html"
     
+    # postsフォルダにHTMLを作成
+    os.makedirs("posts", exist_ok=True)
     with open("post_template.html", "r", encoding="utf-8") as f:
-        html = f.read()
+        template = f.read()
     
-    html = html.replace("{{TITLE}}", new_data['radio_name'] + "さんからのお便り")
-    html = html.replace("{{LETTER}}", new_data['letter'])
-    html = html.replace("{{ANSWER}}", new_data['answer'])
-    html = html.replace("{{DESCRIPTION}}", new_data['description'])
-    html = html.replace("{{DATE}}", display_date)
+    html_content = template.replace("{{TITLE}}", new_data['radio_name'] + "さんからのお便り")\
+                          .replace("{{LETTER}}", new_data['letter'])\
+                          .replace("{{ANSWER}}", new_data['answer'])\
+                          .replace("{{DESCRIPTION}}", new_data['description'])\
+                          .replace("{{DATE}}", display_date)
     
-    # public/posts/ 内に実ファイルを作成
-    with open(f"public/posts/{file_name}", "w", encoding="utf-8") as f:
-        f.write(html)
+    with open(f"posts/{file_name}", "w", encoding="utf-8") as f:
+        f.write(html_content)
 
+    # JSON更新
+    os.makedirs("data", exist_ok=True)
     db_path = "data/questions.json"
+    
+    # 新規作成（古い形式を捨てるため、もし項目名が違っていたらリセット推奨）
     db = []
     if os.path.exists(db_path):
         with open(db_path, "r", encoding="utf-8") as f:
-            try: db = json.load(f)
-            except: db = []
+            try:
+                db = json.load(f)
+                # 過去データが 'file' 形式なら一度リセット
+                if len(db) > 0 and 'file' in db[0]:
+                    db = []
+            except:
+                db = []
     
-    # JSONに保存するURLを "posts/ファイル名" に固定（index.htmlから見て正しいパス）
     db.insert(0, {
         "title": new_data['radio_name'] + "さんのお悩み",
-        "url": f"posts/{file_name}",
+        "url": f"posts/{file_name}", # ここを 'url' に統一
         "date": display_date,
         "description": new_data['description']
     })
@@ -109,23 +111,11 @@ def update_archive_and_pages(new_data):
         json.dump(db[:500], f, ensure_ascii=False, indent=4)
 
 def main():
-    for d in ["posts", "data", "public/data", "public/posts"]: os.makedirs(d, exist_ok=True)
-    
     raw_qs = scrape_questions()
-    added_today = 0
-    
     for q in raw_qs:
-        if added_today >= 1: break
         processed = ai_process(q['title'])
         if processed:
-            update_archive_and_pages(processed)
-            added_today += 1
-
-    # 静的ファイルをすべてpublicへ
-    for f in ["index.html", "archive.html", "profile.html", "post.html", "post_template.html", "style.css", "yui.png", "yuichibi.png", "ad_sample.png"]:
-        if os.path.exists(f): shutil.copy(f, "public/")
-    
-    if os.path.exists("data/questions.json"):
-        shutil.copy("data/questions.json", "public/data/questions.json")
+            update_files(processed)
+            break 
 
 if __name__ == "__main__": main()
