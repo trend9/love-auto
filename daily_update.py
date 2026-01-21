@@ -16,10 +16,10 @@ def ai_generate_letter(llm, index):
     theme = random.choice(themes)
 
     try:
-        # プロンプトを「例」を見せる形式に変更（One-shotプロンプティング）
+        # AIが「[ ]」をそのまま出さないよう、具体的な(例)を提示
         prompt = f"""[System: あなたは包容力のある日本の女性「結姉さん」です。]
 恋愛テーマ: {theme}
-以下の項目を日本語で埋めてください。[]などの記号は出力しないでください。
+以下の4項目を日本語で作成してください。カッコや記号は不要です。
 
 RadioName: (例: 桜んぼ)
 Letter: (例: 結姉さん、聞いて。彼が最近冷たくて...)
@@ -29,21 +29,20 @@ Description: (例: 彼との関係に悩む女性へ、結姉さんからのア�
 ---
 RadioName:"""
 
-        # 確実に文章を作らせるためにmax_tokensを調整
         output = llm(prompt, max_tokens=1000, temperature=0.8, stop=["---"])
-        text = "RadioName:" + output['choices'][0]['text'].strip()
+        # AIの回答の先頭に RadioName: を補完してパースしやすくする
+        full_text = "RadioName:" + output['choices'][0]['text'].strip()
         
         res = {}
-        # 改良されたパースロジック
-        lines = text.split('\n')
+        lines = full_text.split('\n')
         for line in lines:
             if 'RadioName:' in line: res['radio_name'] = line.replace('RadioName:', '').replace('[', '').replace(']', '').strip()
             if 'Letter:' in line: res['letter'] = line.replace('Letter:', '').replace('[', '').replace(']', '').strip()
             if 'Answer:' in line: res['answer'] = line.replace('Answer:', '').replace('[', '').replace(']', '').strip()
             if 'Description:' in line: res['description'] = line.replace('Description:', '').replace('[', '').replace(']', '').strip()
         
-        # 記号がそのまま残っていたり、空だったりする場合の最終防衛策
-        if not res.get('letter') or "お悩み文章" in str(res.get('letter')):
+        # 必須項目が埋まっていない、またはテンプレート文字が残っている場合はボツ
+        if not res.get('letter') or "お悩み文章" in str(res.get('letter')) or "[" in str(res.get('letter')):
             return None
             
         return res
@@ -67,12 +66,12 @@ def update_system(new_data_list):
     now = datetime.now()
     
     for i, data in enumerate(new_data_list):
-        # 1秒ずつずらしてファイル名をユニークにする
+        # 1秒ずつずらしてユニークなファイル名を作る
         time_suffix = (now + timedelta(seconds=i)).strftime("%Y%m%d_%H%M%S")
         display_date = now.strftime("%Y/%m/%d")
         file_name = f"{time_suffix}.html"
         
-        # HTML生成
+        # HTML内の変数を置換
         content = template.replace("{{TITLE}}", data['radio_name'] + "さんからのお便り")\
                           .replace("{{LETTER}}", data['letter'])\
                           .replace("{{ANSWER}}", data['answer'])\
@@ -82,7 +81,7 @@ def update_system(new_data_list):
         with open(f"posts/{file_name}", "w", encoding="utf-8") as f:
             f.write(content)
 
-        # JSONへ追加
+        # データベース(JSON)へ追加
         db.insert(0, {
             "title": data['radio_name'] + "さんのお悩み",
             "url": f"posts/{file_name}",
@@ -90,15 +89,16 @@ def update_system(new_data_list):
             "description": data['description']
         })
 
-    # 最大500件保持
+    # 最大500件保持して保存
     with open(db_path, "w", encoding="utf-8") as f:
         json.dump(db[:500], f, ensure_ascii=False, indent=4)
 
 def main():
     if not os.path.exists(MODEL_PATH):
-        print("モデルがないわよ。")
+        print("モデルファイルが見つからないわ。")
         return
 
+    # 1回のロードで20件連続生成
     llm = Llama(model_path=MODEL_PATH, n_ctx=512, verbose=False)
     
     generated_results = []
@@ -109,9 +109,9 @@ def main():
     
     if generated_results:
         update_system(generated_results)
-        print(f"合計{len(generated_results)}件のお悩みを生成したわ！")
+        print(f"合計{len(generated_results)}件の新しいお悩みを公開したわ！")
     else:
-        print("1件も生成できなかったみたい...")
+        print("残念ながら、今回は新しいお便りを形にできなかったわ...")
 
 if __name__ == "__main__":
     main()
