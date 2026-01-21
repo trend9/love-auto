@@ -7,37 +7,45 @@ from llama_cpp import Llama
 
 # 設定
 MODEL_PATH = "./models/model.gguf"
-GENERATE_COUNT = 20  # 1回の実行で生成する件数
+GENERATE_COUNT = 20
 
 def ai_generate_letter(llm, index):
     print(f"結姉さんが{index+1}通目のお便りを執筆中...")
     
-    # 毎回バリエーションが出るようにテーマをランダムに提示
-    themes = ["片思い", "復縁", "不倫・浮気", "遠距離恋愛", "結婚の悩み", "マッチングアプリ", "社内恋愛", "倦怠期"]
+    themes = ["片思い", "復縁", "不倫・浮気", "遠距離恋愛", "結婚の悩み", "マッチングアプリ", "社内恋愛", "倦怠期", "失恋", "嫉妬"]
     theme = random.choice(themes)
 
     try:
+        # プロンプトを「例」を見せる形式に変更（One-shotプロンプティング）
         prompt = f"""[System: あなたは包容力のある日本の女性「結姉さん」です。]
-お題: {theme}に関する恋愛の悩み。
-以下の形式で、一人の女性からの切ないお便りと、それに対するあなたの回答を書いてください。日本語のみ。
+恋愛テーマ: {theme}
+以下の項目を日本語で埋めてください。[]などの記号は出力しないでください。
 
-RadioName: [可愛い名前]
-Letter: [結姉さん、聞いて…で始まるお悩み文章]
-Answer: [結姉さんの優しくも芯のある回答]
-Description: [100文字程度の要約]"""
+RadioName: (例: 桜んぼ)
+Letter: (例: 結姉さん、聞いて。彼が最近冷たくて...)
+Answer: (例: それは不安になるわね。でも、今は自分の時間を大切にしてみて...)
+Description: (例: 彼との関係に悩む女性へ、結姉さんからのアドバイス。)
 
-        output = llm(prompt, max_tokens=1000, temperature=0.8)
-        text = output['choices'][0]['text'].strip()
+---
+RadioName:"""
+
+        # 確実に文章を作らせるためにmax_tokensを調整
+        output = llm(prompt, max_tokens=1000, temperature=0.8, stop=["---"])
+        text = "RadioName:" + output['choices'][0]['text'].strip()
         
         res = {}
-        for line in text.split('\n'):
-            if 'RadioName:' in line: res['radio_name'] = line.split(':', 1)[1].strip()
-            if 'Letter:' in line: res['letter'] = line.split(':', 1)[1].strip()
-            if 'Answer:' in line: res['answer'] = line.split(':', 1)[1].strip()
-            if 'Description:' in line: res['description'] = line.split(':', 1)[1].strip()
+        # 改良されたパースロジック
+        lines = text.split('\n')
+        for line in lines:
+            if 'RadioName:' in line: res['radio_name'] = line.replace('RadioName:', '').replace('[', '').replace(']', '').strip()
+            if 'Letter:' in line: res['letter'] = line.replace('Letter:', '').replace('[', '').replace(']', '').strip()
+            if 'Answer:' in line: res['answer'] = line.replace('Answer:', '').replace('[', '').replace(']', '').strip()
+            if 'Description:' in line: res['description'] = line.replace('Description:', '').replace('[', '').replace(']', '').strip()
         
-        # 最低限のバリデーション
-        if len(res) < 4: return None
+        # 記号がそのまま残っていたり、空だったりする場合の最終防衛策
+        if not res.get('letter') or "お悩み文章" in str(res.get('letter')):
+            return None
+            
         return res
     except:
         return None
@@ -88,10 +96,9 @@ def update_system(new_data_list):
 
 def main():
     if not os.path.exists(MODEL_PATH):
-        print("モデルが見つからないわ。")
+        print("モデルがないわよ。")
         return
 
-    # メモリ節約のため一回だけロード
     llm = Llama(model_path=MODEL_PATH, n_ctx=512, verbose=False)
     
     generated_results = []
@@ -103,6 +110,8 @@ def main():
     if generated_results:
         update_system(generated_results)
         print(f"合計{len(generated_results)}件のお悩みを生成したわ！")
+    else:
+        print("1件も生成できなかったみたい...")
 
 if __name__ == "__main__":
     main()
