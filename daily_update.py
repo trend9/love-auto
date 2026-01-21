@@ -30,7 +30,7 @@ llm = Llama(
 )
 
 # =====================
-# 既存JSON読み込み
+# JSON 読み込み
 # =====================
 if os.path.exists(JSON_PATH):
     with open(JSON_PATH, "r", encoding="utf-8") as f:
@@ -41,15 +41,15 @@ else:
 used_titles = {q["title"] for q in questions if q.get("title")}
 
 # =====================
-# テーマ生成（被り防止）
+# テーマ（被り防止）
 # =====================
 themes = [
     "結婚の焦り",
     "周囲と比べてしまう恋",
     "年齢への不安",
+    "将来が見えない恋愛",
     "復縁を諦めきれない気持ち",
-    "好きだけど進めない関係",
-    "将来が見えない恋愛"
+    "好きだけど進めない関係"
 ]
 
 random.shuffle(themes)
@@ -61,31 +61,25 @@ theme = next((t for t in themes if t not in used_titles), random.choice(themes))
 PROMPT = f"""
 あなたは35歳の恋愛相談ラジオのパーソナリティ「結姉さん」です。
 
-以下を必ずすべて生成してください。
-装飾記号やJSONは使わず、本文のみを出力してください。
+以下をすべて生成してください。
+記号やJSONは使わず、自然な日本語で書いてください。
 
 【ラジオネーム】
 【SEOタイトル】
 【相談文】
-【回答文】※100〜200文字
-【メタディスクリプション】※100文字前後
+【回答文】（100〜200文字）
+【メタディスクリプション】（100文字前後）
 
 テーマ：{theme}
 """
 
 # =====================
-# AI生成（リトライあり）
+# AI生成（リトライ）
 # =====================
 def generate():
     for _ in range(3):
-        result = llm(
-            PROMPT,
-            max_tokens=900,
-            temperature=0.7
-        )
-
+        result = llm(PROMPT, max_tokens=900, temperature=0.7)
         choice = result["choices"][0]
-        text = ""
 
         if "message" in choice and "content" in choice["message"]:
             text = choice["message"]["content"].strip()
@@ -102,22 +96,32 @@ def generate():
 raw = generate()
 
 # =====================
-# 抽出（ゆるめ）
+# 正しい抽出（ブロック方式）
 # =====================
-def extract(label):
-    for line in raw.splitlines():
-        if line.startswith(label):
-            return line.replace(label, "").strip()
-    return ""
+def extract_block(label, text):
+    lines = text.splitlines()
+    collecting = False
+    buffer = []
 
-name = extract("【ラジオネーム】")
-title = extract("【SEOタイトル】") or theme
-letter = extract("【相談文】")
-answer = extract("【回答文】")
-meta = extract("【メタディスクリプション】")
+    for line in lines:
+        if line.strip().startswith(label):
+            collecting = True
+            continue
+        if collecting and line.strip().startswith("【"):
+            break
+        if collecting:
+            buffer.append(line)
+
+    return "\n".join(buffer).strip()
+
+name = extract_block("【ラジオネーム】", raw)
+title = extract_block("【SEOタイトル】", raw) or theme
+letter = extract_block("【相談文】", raw)
+answer = extract_block("【回答文】", raw)
+meta = extract_block("【メタディスクリプション】", raw)
 
 # =====================
-# 日付・ファイル名
+# 日付・パス
 # =====================
 now = datetime.now()
 timestamp = now.strftime("%Y%m%d_%H%M%S")
@@ -147,7 +151,7 @@ with open(post_path, "w", encoding="utf-8") as f:
     f.write(html)
 
 # =====================
-# JSON更新（先頭追加）
+# JSON更新
 # =====================
 questions.insert(0, {
     "title": title,
@@ -160,7 +164,7 @@ with open(JSON_PATH, "w", encoding="utf-8") as f:
     json.dump(questions, f, ensure_ascii=False, indent=2)
 
 # =====================
-# index.html 更新
+# index 更新（既存仕様前提）
 # =====================
 def build_list(items):
     return "\n".join(
@@ -171,10 +175,7 @@ def build_list(items):
 with open(INDEX_PATH, "r", encoding="utf-8") as f:
     index_html = f.read()
 
-index_html = index_html.replace(
-    "<!-- LATEST_POSTS -->",
-    build_list(questions)
-)
+index_html = index_html.replace("<!-- LATEST_POSTS -->", build_list(questions))
 
 with open(INDEX_PATH, "w", encoding="utf-8") as f:
     f.write(index_html)
@@ -207,4 +208,4 @@ archive_html = f"""<!DOCTYPE html>
 with open(ARCHIVE_PATH, "w", encoding="utf-8") as f:
     f.write(archive_html)
 
-print("=== 完了：記事・JSON・index・archive 更新 ===")
+print("=== 記事生成・反映 完了 ===")
