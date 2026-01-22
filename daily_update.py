@@ -1,147 +1,139 @@
-import os
 import json
+import os
 import subprocess
-import datetime
-import requests
+from datetime import datetime
 from pathlib import Path
-from html import escape
 
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
-POSTS_DIR = BASE_DIR / "posts"
+# =========================
+# 設定
+# =========================
 
-QUESTIONS_FILE = DATA_DIR / "questions.json"
-USED_FILE = DATA_DIR / "used_questions.json"
-ARCHIVE_FILE = BASE_DIR / "archive.html"
-POST_TEMPLATE = BASE_DIR / "post_template.html"
+QUESTIONS_FILE = "data/questions.json"
+USED_QUESTIONS_FILE = "data/used_questions.json"
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-MODEL = "gpt-4o-mini"
+POSTS_DIR = Path("posts")
+TEMPLATE_FILE = "post_template.html"
 
-HEADERS = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",
-    "Content-Type": "application/json"
-}
+POSTS_DIR.mkdir(exist_ok=True)
+Path("data").mkdir(exist_ok=True)
 
-# ----------------------
-# utility
-# ----------------------
-def safe(text):
-    return escape(text)
+# =========================
+# JSON ユーティリティ
+# =========================
 
 def load_json(path, default):
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return default
+    if not os.path.exists(path):
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return default
 
 def save_json(path, data):
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ----------------------
-# GitHub Models call
-# ----------------------
-def github_llm(prompt: str) -> str:
-    url = "https://models.inference.ai.azure.com/chat/completions"
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "あなたは恋愛相談サイト『ゆい姉さんの恋愛相談室』の回答者です。"
-                    "口調は優しく自然、日本語。"
-                    "テンプレ感・箇条書き・定型文は禁止。"
-                )
-            },
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.9,
-        "max_tokens": 1200
-    }
-    r = requests.post(url, headers=HEADERS, json=payload)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+# =========================
+# HTML生成
+# =========================
 
-# ----------------------
-# main
-# ----------------------
+def generate_post_html(title: str) -> str:
+    """
+    記事1ページ構成（固定）
+    """
+    now = datetime.now().strftime("%Y-%m-%d")
+
+    content = f"""
+<p class="yui-answer">
+好きだからこそ悩んでしまうよね。
+その気持ちはとても自然なものだよ。
+焦らず、一緒に整理していこう。
+</p>
+
+<h2>この悩みが起きる理由</h2>
+<p>
+恋愛では「相手の気持ちが見えない不安」や
+「自分ばかり好きなのでは」という感情が
+大きくなりやすいんだ。
+</p>
+
+<h3>よくある勘違い</h3>
+<p>
+LINEの頻度や態度だけで
+相手の本音を判断してしまうこと。
+</p>
+
+<h2>今できる具体的な行動</h2>
+<p>
+一度、自分の気持ちを整理してから
+相手と自然に会話する時間を作ろう。
+</p>
+
+<h3>やってはいけない行動</h3>
+<p>
+不安なまま詰め寄ること。
+これは逆効果になりやすいよ。
+</p>
+"""
+
+    with open(TEMPLATE_FILE, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    return template \
+        .replace("{{TITLE}}", title) \
+        .replace("{{DATE}}", now) \
+        .replace("{{CONTENT}}", content)
+
+# =========================
+# メイン処理
+# =========================
+
 def main():
-    # ① 質問生成（B）
-    subprocess.run(["python3", "question_generator.py"], check=True)
+    # ① 質問生成（無限化ロジック）
+    subprocess.run(
+        ["python3", "question_generator.py"],
+        check=True
+    )
 
     questions = load_json(QUESTIONS_FILE, [])
-    used = load_json(USED_FILE, [])
+    used = load_json(USED_QUESTIONS_FILE, [])
 
-    if not questions:
-        print("⚠ 質問がありません")
+    used_titles = {q["title"] for q in used if "title" in q}
+
+    # ② 未使用の質問を1つ選ぶ
+    target = None
+    for q in questions:
+        if q["title"] not in used_titles:
+            target = q
+            break
+
+    if not target:
+        print("⚠ 未使用の質問がありません")
         return
 
-    q = questions.pop(0)
-    used.append(q)
+    title = target["title"]
 
-    save_json(QUESTIONS_FILE, questions)
-    save_json(USED_FILE, used)
+    # ③ HTML生成
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = POSTS_DIR / f"{timestamp}.html"
 
-    title = q["title"]
-    body = q["body"]
+    html = generate_post_html(title)
 
-    # ② 記事生成（A）
-    prompt = f"""
-以下は読者からの恋愛相談です。
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html)
 
-【相談内容】
-{body}
+    # ④ 使用済みへ移動
+    used.append({
+        "title": title,
+        "used_at": datetime.now().isoformat()
+    })
 
-これに対して、ゆい姉さんとして1ページの記事を書いてください。
+    save_json(USED_QUESTIONS_FILE, used)
 
-条件：
-・冒頭は3〜5行の自然な語り
-・h2 を1つ以上使う
-・h3 を使って具体的なアドバイスを深掘り
-・テンプレ禁止
-・SEOを意識しつつ人間味重視
-"""
+    print(f"✅ 記事生成完了: {filename}")
 
-    article_html = github_llm(prompt)
-
-    now = datetime.datetime.now()
-    post_id = now.strftime("%Y%m%d_%H%M%S")
-    post_path = POSTS_DIR / f"{post_id}.html"
-
-    html = POST_TEMPLATE.read_text(encoding="utf-8")
-    html = html.replace("{{TITLE}}", safe(title))
-    html = html.replace("{{CONTENT}}", article_html)
-    html = html.replace("{{DATE}}", now.strftime("%Y/%m/%d %H:%M"))
-
-    post_path.write_text(html, encoding="utf-8")
-
-    q["url"] = f"posts/{post_id}.html"
-
-    # ③ archive 再生成
-    archive_items = ""
-    for item in reversed(used):
-        if "url" in item:
-            archive_items += f'<li><a href="{item["url"]}">{safe(item["title"])}</a></li>\n'
-
-    archive_html = f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>相談アーカイブ</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<h1>相談アーカイブ</h1>
-<ul>
-{archive_items}
-</ul>
-</body>
-</html>
-"""
-
-    ARCHIVE_FILE.write_text(archive_html, encoding="utf-8")
-
-    print("✅ Daily update completed successfully.")
+# =========================
 
 if __name__ == "__main__":
     main()
