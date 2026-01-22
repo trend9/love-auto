@@ -114,6 +114,12 @@ def main():
         }
     }
 
+    json_ld_script = (
+        '<script type="application/ld+json">'
+        + json.dumps(json_ld, ensure_ascii=False)
+        + '</script>'
+    )
+
     html_content = tpl
     html_content = html_content.replace("{{TITLE}}", title)
     html_content = html_content.replace("{{META}}", description)
@@ -122,7 +128,7 @@ def main():
     html_content = html_content.replace("{{LETTER}}", letter)
     html_content = html_content.replace("{{ANSWER}}", answer)
     html_content = html_content.replace("{{RELATED}}", related_items)
-    html_content = html_content.replace("{{JSON_LD}}", json.dumps(json_ld, ensure_ascii=False))
+    html_content = html_content.replace("{{JSON_LD}}", json_ld_script)
 
     with open(post_path, "w", encoding="utf-8") as f:
         f.write(html_content)
