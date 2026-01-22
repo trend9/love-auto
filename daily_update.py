@@ -1,168 +1,126 @@
-import os
 import json
-import re
+import os
 from datetime import datetime
+from llama_cpp import Llama
+import html
 import random
 
-# =====================
-# 設定
-# =====================
-DATA_PATH = "data/questions.json"
+# ========= 設定 =========
+MODEL_PATH = "models/model.gguf"
 POST_DIR = "posts"
+DATA_PATH = "data/questions.json"
 TEMPLATE_PATH = "post_template.html"
-
-SITE_URL = "https://trend9.github.io/love-auto"
-IMAGE_URL = f"{SITE_URL}/yui.png"
-AUTHOR_NAME = "結姉さん"
 
 os.makedirs(POST_DIR, exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
-# =====================
-# ユーティリティ
-# =====================
-def clean_text(text: str, max_len: int) -> str:
-    if not text:
-        return ""
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"(出力|回答例|import .*|print\(.*?\))", "", text)
-    return text.strip()[:max_len]
+# ========= 安全ユーティリティ =========
+def clean_text(text: str) -> str:
+    text = html.escape(text.strip())
+    return text.replace("\n\n\n", "\n\n")
 
-def safe_fallback_title(name: str) -> str:
-    return f"{name}さんの悩み相談"
-
-def now_strings():
-    dt = datetime.now()
-    return (
-        dt.strftime("%Y/%m/%d %H:%M"),
-        dt.strftime("%Y%m%d_%H%M%S"),
-        dt.isoformat()
-    )
-
-def load_questions():
-    if not os.path.exists(DATA_PATH):
-        return []
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
-        try:
+def safe_json_load(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-        except json.JSONDecodeError:
-            return []
+    except Exception:
+        return default
 
-def save_questions(data):
-    with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# =====================
-# ダミー入力（※ここは既存ロジックに差し替え可）
-# =====================
-NAMES = ["Kazuki", "Haruka", "Mina", "Yui", "Sakura"]
-
-name = random.choice(NAMES)
-letter = (
-    "私は大学生で、将来のキャリアについて悩んでいます。\n"
-    "今やっていることが本当に将来に繋がるのか、不安になります。"
-)
-answer = (
-    "大学生の段階で将来に不安を感じるのは、とても自然なことです。\n"
-    "今は「決めきる」よりも「試す」時期だと考えてください。\n"
-    "経験の積み重ねが、後から意味を持つことも多いですよ。"
+# ========= LLM =========
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    temperature=0.7,
+    top_p=0.9,
+    repeat_penalty=1.1,
 )
 
-# =====================
-# タイトル & メタ生成
-# =====================
-raw_title = f"{name}さんからのお便り"
-raw_meta = clean_text(letter, 120)
+prompt = """
+あなたは日本語の恋愛相談記事を生成します。
 
-title = clean_text(raw_title, 50)
-meta = clean_text(raw_meta, 120)
+以下のJSON形式でのみ出力してください。
+余計な説明・コード・プロンプト文は一切含めないでください。
 
-if not title:
-    title = safe_fallback_title(name)
+{
+  "name": "日本人の女性ラジオネーム（2〜4文字）",
+  "title": "検索向けの自然な記事タイトル",
+  "description": "120文字以内の要約メタディスクリプション",
+  "letter": "相談本文（自然で一貫性のある内容）",
+  "answer": "結姉さんとしての丁寧で具体的な回答"
+}
+"""
 
-if not meta:
-    meta = clean_text(letter, 120)
+result = llm(prompt, max_tokens=900)
+raw = result["choices"][0]["text"].strip()
 
-# =====================
-# 日付・URL
-# =====================
-date_str, slug, iso_date = now_strings()
-post_filename = f"{slug}.html"
-post_path = os.path.join(POST_DIR, post_filename)
-post_url = f"{SITE_URL}/posts/{post_filename}"
+try:
+    data = json.loads(raw)
+except Exception as e:
+    raise RuntimeError("LLM JSON parse failed") from e
 
-# =====================
-# JSON-LD
-# =====================
-json_ld = {
+# ========= 整形 =========
+name = clean_text(data["name"])
+title = clean_text(data["title"])
+description = clean_text(data["description"])
+letter = clean_text(data["letter"])
+answer = clean_text(data["answer"])
+
+now = datetime.now()
+slug = now.strftime("%Y%m%d_%H%M%S")
+post_file = f"{POST_DIR}/{slug}.html"
+url = f"posts/{slug}.html"
+
+# ========= questions.json 永久追加 =========
+questions = safe_json_load(DATA_PATH, [])
+
+questions.append({
+    "title": title,
+    "url": url,
+    "date": now.strftime("%Y/%m/%d %H:%M"),
+    "description": description
+})
+
+with open(DATA_PATH, "w", encoding="utf-8") as f:
+    json.dump(questions, f, ensure_ascii=False, indent=2)
+
+# ========= 関連記事 =========
+related_items = [
+    f'<li><a href="../{q["url"]}">{html.escape(q["title"])}</a></li>'
+    for q in questions[:-1][-3:]
+]
+related_html = "\n".join(related_items)
+
+# ========= テンプレ反映 =========
+with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+    tpl = f.read()
+
+json_ld = json.dumps({
     "@context": "https://schema.org",
     "@type": "Article",
     "headline": title,
-    "description": meta,
-    "datePublished": iso_date,
-    "author": {
-        "@type": "Person",
-        "name": AUTHOR_NAME
-    },
-    "image": IMAGE_URL,
+    "description": description,
+    "datePublished": now.isoformat(),
+    "author": {"@type": "Person", "name": "結姉さん"},
+    "image": "https://trend9.github.io/love-auto/yui.png",
     "mainEntityOfPage": {
         "@type": "WebPage",
-        "@id": post_url
+        "@id": f"https://trend9.github.io/love-auto/{url}"
     }
-}
+}, ensure_ascii=False)
 
-json_ld_html = (
-    '<script type="application/ld+json">\n'
-    + json.dumps(json_ld, ensure_ascii=False)
-    + '\n</script>'
-)
+html_out = tpl \
+    .replace("{{TITLE}}", title) \
+    .replace("{{META}}", description) \
+    .replace("{{DATE}}", now.strftime("%Y/%m/%d %H:%M")) \
+    .replace("{{NAME}}", name) \
+    .replace("{{LETTER}}", letter) \
+    .replace("{{ANSWER}}", answer) \
+    .replace("{{RELATED}}", related_html) \
+    .replace("{{JSONLD}}", json_ld)
 
-# =====================
-# RELATED 生成
-# =====================
-questions = load_questions()
+with open(post_file, "w", encoding="utf-8") as f:
+    f.write(html_out)
 
-related_items = []
-for q in reversed(questions[-5:]):
-    rt = clean_text(q.get("title", ""), 40)
-    if rt:
-        related_items.append(
-            f'<li><a href="../{q["url"]}">{rt}</a></li>'
-        )
-
-related_html = "\n".join(related_items) if related_items else ""
-
-# =====================
-# HTML生成
-# =====================
-with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-    template = f.read()
-
-html = (
-    template
-    .replace("{{TITLE}}", title)
-    .replace("{{META}}", meta)
-    .replace("{{NAME}}", name)
-    .replace("{{DATE}}", date_str)
-    .replace("{{LETTER}}", letter)
-    .replace("{{ANSWER}}", answer)
-    .replace("{{RELATED}}", related_html)
-    .replace("{{JSON_LD}}", json_ld_html)
-)
-
-with open(post_path, "w", encoding="utf-8") as f:
-    f.write(html)
-
-# =====================
-# questions.json 永久追記
-# =====================
-questions.append({
-    "title": title,
-    "url": f"posts/{post_filename}",
-    "date": date_str,
-    "description": meta
-})
-
-save_questions(questions)
-
-print(f"✔ Generated: {post_path}")
+print("Generated:", post_file)
