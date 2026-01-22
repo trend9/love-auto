@@ -5,6 +5,9 @@ from pathlib import Path
 import requests
 import html
 import random
+import subprocess
+
+subprocess.run(["python3", "question_generator.py"], check=True)
 
 # ======================
 # 設定
@@ -84,12 +87,22 @@ def main():
     post_url = f"posts/{post_filename}"
 
     # ----------------------
-    # related 安定生成
+    # related 安定生成（完全ガード版）
     # ----------------------
     related_items = ""
     if questions:
         for q in questions[-3:]:
+
+            # id が無ければスキップ（壊れた古い質問）
+            if "id" not in q:
+                continue
+
+            # url が無ければ自動補完
+            if "url" not in q:
+                q["url"] = f'posts/{q["id"]}.html'
+
             related_items += f'<li><a href="../{q["url"]}">{safe_text(q["title"])}</a></li>\n'
+
 
     # ----------------------
     # 記事HTML生成
@@ -145,11 +158,30 @@ def main():
     save_questions(questions)
 
     # ----------------------
-    # archive.html 再生成
+    # archive.html 再生成（完全防御版）
     # ----------------------
     archive_list = ""
+
     for q in reversed(questions):
-        archive_list += f'<li><a href="{q["url"]}">{safe_text(q["title"])}</a></li>\n'
+
+        # id が無いものは壊れた質問なのでスキップ
+        if "id" not in q:
+            continue
+
+        # title が無い場合もスキップ（保険）
+        if "title" not in q:
+            continue
+
+        # url が無ければここで必ず生成
+        if "url" not in q:
+            q["url"] = f'posts/{q["id"]}.html'
+
+        archive_list += (
+            f'<li>'
+            f'<a href="{q["url"]}">{safe_text(q["title"])}</a>'
+            f'</li>\n'
+        )
+
 
     archive_html = f"""<!DOCTYPE html>
 <html lang="ja">
