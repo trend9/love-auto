@@ -144,3 +144,19 @@ header h1 {
     header h1 { font-size: 1.3rem; }
     .yui-chibi-fixed { width: 70px; bottom: 15px; right: 15px; }
 }
+.archive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.archive-card {
+  padding: 20px;
+  border-radius: 12px;
+  background: #111;
+  transition: transform .2s;
+}
+
+.archive-card:hover {
+  transform: translateY(-4px);
+}
