@@ -1,197 +1,171 @@
 import json
 import os
-import sys
-import time
-from datetime import datetime, timezone, timedelta
-
+from datetime import datetime
+from pathlib import Path
 import requests
+import html
+import random
 
 # ======================
-# 基本設定
+# 設定
 # ======================
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY not set")
+BASE_DIR = Path(__file__).parent
+POSTS_DIR = BASE_DIR / "posts"
+DATA_DIR = BASE_DIR / "data"
+QUESTIONS_FILE = DATA_DIR / "questions.json"
+ARCHIVE_FILE = BASE_DIR / "archive.html"
+INDEX_FILE = BASE_DIR / "index.html"
+POST_TEMPLATE_FILE = BASE_DIR / "post_template.html"
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(ROOT_DIR, "data")
-POSTS_DIR = os.path.join(ROOT_DIR, "posts")
+SITE_URL = "https://trend9.github.io/love-auto"
+OG_IMAGE = f"{SITE_URL}/yui.png"
 
-QUESTIONS_FILE = os.path.join(DATA_DIR, "questions.json")
-
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(POSTS_DIR, exist_ok=True)
-
-JST = timezone(timedelta(hours=9))
+POSTS_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
 # ======================
-# ユーティリティ
+# 安全ユーティリティ
 # ======================
+def safe_text(s: str) -> str:
+    return html.escape(s.strip())
+
+def now_jst():
+    return datetime.now().strftime("%Y/%m/%d %H:%M")
+
+def now_iso():
+    return datetime.now().isoformat()
+
 def load_questions():
-    if not os.path.exists(QUESTIONS_FILE):
+    if not QUESTIONS_FILE.exists():
         return []
-    with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
 
 def save_questions(data):
     with open(QUESTIONS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def call_llm(prompt, retry=3):
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "You are a professional Japanese consulting writer."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.7,
-    }
-
-    for i in range(retry):
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
-        r.raise_for_status()
-        text = r.json()["choices"][0]["message"]["content"].strip()
-        if text:
-            return text
-        time.sleep(1)
-
-    raise RuntimeError("LLM returned empty response")
-
-def parse_llm_json(text, retry_prompt):
-    try:
-        return json.loads(text)
-    except Exception:
-        # JSON崩壊時は再生成
-        fixed = call_llm(retry_prompt)
-        return json.loads(fixed)
-
 # ======================
-# プロンプト
+# 相談データ（LLM不使用・安定）
 # ======================
-BASE_PROMPT = """
-あなたは日本語の人生・恋愛相談コラムの執筆AIです。
-
-以下の条件を必ず守ってください。
-
-・出力は必ずJSONのみ
-・JSON以外の文字を一切出力しない
-・すべての項目は空文字不可
-・相談文と回答は必ず同じ前提（年齢・立場）を共有する
-・回答文では相談文に含まれる具体語を2つ以上必ず使う
-
-以下のJSONテンプレートを完全に埋めてください。
-
-{
-  "name": "",
-  "title": "",
-  "description": "",
-  "letter": "",
-  "answer": ""
-}
-"""
-
-RETRY_PROMPT = """
-前回の出力はJSONとして不正でした。
-必ず以下のJSONテンプレートのみを出力してください。
-
-{
-  "name": "",
-  "title": "",
-  "description": "",
-  "letter": "",
-  "answer": ""
-}
-"""
-
-# ======================
-# メイン処理
-# ======================
-questions = load_questions()
-
-raw = call_llm(BASE_PROMPT)
-data = parse_llm_json(raw, RETRY_PROMPT)
-
-now = datetime.now(JST)
-slug = now.strftime("%Y%m%d_%H%M%S")
-filename = f"{slug}.html"
-post_path = os.path.join(POSTS_DIR, filename)
-
-questions.append({
-    "slug": slug,
-    "name": data["name"],
-    "title": data["title"],
-    "description": data["description"],
-})
-
-save_questions(questions)
-
-# ======================
-# HTML生成
-# ======================
-json_ld = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": data["title"],
-    "description": data["description"],
-    "datePublished": now.isoformat(),
-    "author": {
-        "@type": "Person",
-        "name": "結姉さん"
+CONSULTATION_POOL = [
+    {
+        "name": "Kazuki",
+        "letter": "私は大学生で、将来のキャリアについて悩んでいます。\n今やっていることが本当に将来に繋がるのか、不安になります。",
+        "answer": "大学生の段階で将来に不安を感じるのは、とても自然なことです。\n今は「決めきる」よりも「試す」時期だと考えてください。\n経験の積み重ねは、後から必ず意味を持ちます。"
     },
-    "image": "https://trend9.github.io/love-auto/yui.png",
-    "mainEntityOfPage": {
-        "@type": "WebPage",
-        "@id": f"https://trend9.github.io/love-auto/posts/{filename}"
+    {
+        "name": "Mika",
+        "letter": "恋人との将来が見えず、不安になることがあります。\nこのまま続けていいのか悩んでいます。",
+        "answer": "将来が見えないと不安になりますよね。\n一度、今の関係で大切にしたいことを書き出してみてください。\n答えは、行動の中で少しずつ見えてきます。"
     }
-}
+]
 
-html = f"""<!DOCTYPE html>
+# ======================
+# メイン生成
+# ======================
+def main():
+    questions = load_questions()
+
+    source = random.choice(CONSULTATION_POOL)
+    name = safe_text(source["name"])
+    letter = safe_text(source["letter"])
+    answer = safe_text(source["answer"])
+
+    title = f"{name}さんからのお便り"
+    description = letter.split("\n")[0]
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    post_filename = f"{timestamp}.html"
+    post_path = POSTS_DIR / post_filename
+    post_url = f"posts/{post_filename}"
+
+    # ----------------------
+    # related 安定生成
+    # ----------------------
+    related_items = ""
+    if questions:
+        for q in questions[-3:]:
+            related_items += f'<li><a href="../{q["url"]}">{safe_text(q["title"])}</a></li>\n'
+
+    # ----------------------
+    # 記事HTML生成
+    # ----------------------
+    with open(POST_TEMPLATE_FILE, "r", encoding="utf-8") as f:
+        tpl = f.read()
+
+    json_ld = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": title,
+        "description": description,
+        "datePublished": now_iso(),
+        "author": {
+            "@type": "Person",
+            "name": "結姉さん"
+        },
+        "image": OG_IMAGE,
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": f"{SITE_URL}/{post_url}"
+        }
+    }
+
+    html_content = tpl
+    html_content = html_content.replace("{{TITLE}}", title)
+    html_content = html_content.replace("{{META}}", description)
+    html_content = html_content.replace("{{DATE}}", now_jst())
+    html_content = html_content.replace("{{NAME}}", name)
+    html_content = html_content.replace("{{LETTER}}", letter)
+    html_content = html_content.replace("{{ANSWER}}", answer)
+    html_content = html_content.replace("{{RELATED}}", related_items)
+    html_content = html_content.replace("{{JSON_LD}}", json.dumps(json_ld, ensure_ascii=False))
+
+    with open(post_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    # ----------------------
+    # questions.json 永久追加
+    # ----------------------
+    questions.append({
+        "title": title,
+        "url": post_url,
+        "date": now_jst(),
+        "description": description
+    })
+    save_questions(questions)
+
+    # ----------------------
+    # archive.html 再生成
+    # ----------------------
+    archive_list = ""
+    for q in reversed(questions):
+        archive_list += f'<li><a href="{q["url"]}">{safe_text(q["title"])}</a></li>\n'
+
+    archive_html = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>{data["title"]}</title>
-<meta name="description" content="{data["description"]}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script type="application/ld+json">
-{json.dumps(json_ld, ensure_ascii=False, indent=2)}
-</script>
-<link rel="stylesheet" href="../style.css">
+<title>相談アーカイブ</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="post-container">
-<p class="post-date">更新日：{now.strftime("%Y/%m/%d %H:%M")}</p>
-
-<h1 class="post-title">{data["name"]}さんからのお便り</h1>
-
-<section>
-<h2>お便り内容</h2>
-<p style="white-space:pre-wrap;">{data["letter"]}</p>
-</section>
-
-<section>
-<h2>結姉さんからの回答</h2>
-<p style="white-space:pre-wrap;">{data["answer"]}</p>
-</section>
-
-<div class="back-area">
-<a href="../index.html">← 相談室のトップへ戻る</a>
-</div>
-</div>
+<h1>相談アーカイブ</h1>
+<ul>
+{archive_list}
+</ul>
+<a href="index.html">← トップへ戻る</a>
 </body>
 </html>
 """
+    with open(ARCHIVE_FILE, "w", encoding="utf-8") as f:
+        f.write(archive_html)
 
-with open(post_path, "w", encoding="utf-8") as f:
-    f.write(html)
+    print("Daily update completed successfully.")
 
-print(f"Generated: {post_path}")
+# ======================
+if __name__ == "__main__":
+    main()
