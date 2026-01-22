@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ← 念のため（重要）
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,7 +43,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add posts/*.html data/questions.json archive.html index.html
-          git commit -m "Daily update by Yui AI" || echo "No changes"
-
-          git pull --rebase origin main
+          git commit -m "Daily update by Yui AI" || exit 0
           git push origin main
