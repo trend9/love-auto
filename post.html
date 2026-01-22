@@ -1,58 +1,86 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>{{SEO_TITLE}}</title>
-    
-    <meta name="description" content="{{SEO_DESCRIPTION}}">
-    
-    <meta property="og:title" content="{{SEO_TITLE}}">
-    <meta property="og:description" content="{{SEO_DESCRIPTION}}">
-    <meta property="og:type" content="article">
-    <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
-    
-    <link rel="stylesheet" href="../style.css">
-    <style>
-        body { margin: 0; padding: 0; background-color: #fff9fb; font-family: sans-serif; }
-        .site-wrapper { display: grid; grid-template-columns: 300px 1fr 300px; gap: 20px; max-width: 1400px; margin: 0 auto; }
-        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; min-height: 100vh; }
-        .yui-word { background: #fff0f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; border: 1px dashed #d63384; }
-        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #f9f9f9; display: flex; align-items: center; justify-content: center; border: 1px solid #eee; }
-        main { background: white; padding: 40px; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.02); }
-        .search-box { text-align: right; margin-bottom: 20px; }
-        .search-box input { padding: 8px; border: 1px solid #ffc0cb; border-radius: 5px; width: 200px; }
-        header h1 { color: #d63384; border-bottom: 3px solid #ffc0cb; padding-bottom: 10px; }
-        .sidebar-right { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-        .yui-img { width: 100%; height: auto; display: block; }
-        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        @media (max-width: 1100px) {
-            .site-wrapper { grid-template-columns: 1fr; }
-            .sidebar-left, .sidebar-right { display: none; }
-        }
-                /* スマホ対応 */
-        @media (max-width: 600px) {
-            .post-container { margin: 10px; padding: 20px; }
-        }
-    </style>
+  <meta charset="UTF-8">
+
+  <!-- SEO -->
+  <title>{{TITLE}}</title>
+  <meta name="description" content="{{META}}">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{META}}">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
+  {{JSON_LD}}
+
+  <!-- Mobile -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../style.css">
 </head>
+
 <body>
-    <div class="post-container">
-        <p style="color:#999; font-size:0.9rem;">更新日: {{DATE}}</p>
-        <h1 style="color:#333; margin-bottom:30px; line-height: 1.4;">{{TITLE}}</h1>
-        
-        <div class="letter-section">
-            <p style="white-space: pre-wrap;">{{LETTER}}</p>
-        </div>
 
-        <div class="answer-section">
-            <h3>結姉さんからの回答</h3>
-            <p style="white-space: pre-wrap;">{{ANSWER}}</p>
-        </div>
+  <!-- 共通ヘッダー（index.htmlと同一） -->
+  <header>
+    <h1>結姉さんの恋愛相談室</h1>
+  </header>
 
+  <div class="container">
+
+    <!-- 記事本体 -->
+    <article class="site-intro">
+
+      <p class="post-date">更新日：{{DATE}}</p>
+
+      <h1 class="post-title">{{NAME}}さんからのお便り</h1>
+
+      <!-- お便り -->
+      <section class="letter-section">
+        <h2 class="section-title">お便り内容</h2>
+        <p class="post-text" style="white-space: pre-wrap;">
+{{LETTER}}
+        </p>
+      </section>
+
+      <!-- 回答 -->
+      <section class="answer-section">
+        <h2 class="section-title">結姉さんからの回答</h2>
+        <p class="post-text" style="white-space: pre-wrap;">
+{{ANSWER}}
+        </p>
+      </section>
+
+      <!-- 関連記事 -->
+      <section class="related-section">
+        <h2 class="section-title">こんな相談も読まれています</h2>
+        <ul class="related-list">
+{{RELATED}}
+        </ul>
+      </section>
+      <nav class="post-nav">
+        <a href="20260121_135304.html" class="prev">← 前の記事</a>
+        <a href="20260122_034821.html" class="next">次の記事 →</a>
+      </nav>
+
+      <!-- 戻る -->
+      <div class="back-area">
         <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
-    </div>
+      </div>
+
+    </article>
+  </div>
+
+  <!-- PC用 立ち絵 -->
+  <div class="yui-pc-fixed">
+    <div class="yui-bubble">また相談しに来てね</div>
+    <img src="../yui.png" alt="結姉さん">
+  </div>
+
+  <!-- モバイル用 ちびキャラ -->
+  <div class="yui-chibi-fixed">
+    <img src="../yuichibi.png" alt="結姉さん">
+  </div>
+
 </body>
 </html>
