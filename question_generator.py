@@ -1,62 +1,103 @@
 import json
 import os
-from datetime import datetime
-import random
+import requests
+from pathlib import Path
 
-QUESTIONS_FILE = "data/questions.json"
-USED_FILE = "data/used_questions.json"
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
 
-# SEOテンプレ質問（100個でも増やせる）
-SEO_TEMPLATES = [
-    "大学生で将来が不安です。今やるべきことは何でしょうか？",
-    "恋人との価値観の違いに悩んでいます。別れるべきですか？",
-    "仕事が続きません。自分に向いている仕事はどう見つけますか？",
-    "30代で結婚を焦っています。何を優先すべきですか？",
-    "人間関係で疲れやすい性格は直せますか？",
-    # ↓ここにどんどん足す（100個以上OK）
-]
+QUESTIONS_FILE = DATA_DIR / "questions.json"
+USED_FILE = DATA_DIR / "used_questions.json"
 
-def load_json(path, default):
-    if not os.path.exists(path):
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+MODEL = "gpt-4o-mini"
+
+HEADERS = {
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+# ----------------------
+# utility
+# ----------------------
+def load_json(path):
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+# ----------------------
+# GitHub Models
+# ----------------------
+def github_llm(prompt: str) -> list:
+    url = "https://models.inference.ai.azure.com/chat/completions"
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは恋愛相談サイト向けに"
+                    "SEOに強く、検索されやすい質問を作る専門家です。"
+                )
+            },
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.95,
+        "max_tokens": 1200
+    }
+    r = requests.post(url, headers=HEADERS, json=payload)
+    r.raise_for_status()
+    text = r.json()["choices"][0]["message"]["content"]
+    return [line.strip("・- ") for line in text.split("\n") if line.strip()]
+
+# ----------------------
+# main
+# ----------------------
 def main():
-    questions = load_json(QUESTIONS_FILE, [])
-    used = set(load_json(USED_FILE, []))
+    questions = load_json(QUESTIONS_FILE)
+    used = load_json(USED_FILE)
 
-    new_questions = []
+    # title があるものだけ使う（←超重要）
+    existing_titles = {
+        q["title"] for q in questions
+        if isinstance(q, dict) and "title" in q
+    }
+    used_titles = {
+        q["title"] for q in used
+        if isinstance(q, dict) and "title" in q
+    }
 
-    for q in SEO_TEMPLATES:
-        if q in used:
+    prompt = """
+恋愛相談サイト向けに、
+Google検索で実際に検索されやすい質問を10個作ってください。
+
+条件：
+・具体的で悩みが想像できる
+・同じ意味の質問は作らない
+・タイトル文だけ出力
+"""
+
+    titles = github_llm(prompt)
+
+    added = 0
+    for t in titles:
+        if t in existing_titles or t in used_titles:
             continue
 
-        new_questions.append({
-            "question": q,
-            "created_at": datetime.now().isoformat(),
-            "used": False
+        questions.append({
+            "title": t,
+            "body": f"{t}。どうすればいいでしょうか？"
         })
-        used.add(q)
-
-        # 一度に追加する数（調整可）
-        if len(new_questions) >= 20:
-            break
-
-    if not new_questions:
-        print("⚠ テンプレ質問が尽きています")
-        return
-
-    questions.extend(new_questions)
+        added += 1
 
     save_json(QUESTIONS_FILE, questions)
-    save_json(USED_FILE, list(used))
-
-    print(f"✅ {len(new_questions)} 件の質問を追加しました")
+    print(f"✅ {added} 件の質問を追加しました")
 
 if __name__ == "__main__":
     main()

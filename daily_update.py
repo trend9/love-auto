@@ -1,187 +1,127 @@
-import json
 import os
-from datetime import datetime
-from pathlib import Path
-import requests
-import html
-import random
+import json
 import subprocess
+import datetime
+import requests
+from pathlib import Path
+from html import escape
 
-subprocess.run(["python3", "question_generator.py"], check=True)
-
-# ======================
-# 設定
-# ======================
 BASE_DIR = Path(__file__).parent
-POSTS_DIR = BASE_DIR / "posts"
 DATA_DIR = BASE_DIR / "data"
+POSTS_DIR = BASE_DIR / "posts"
+
 QUESTIONS_FILE = DATA_DIR / "questions.json"
+USED_FILE = DATA_DIR / "used_questions.json"
 ARCHIVE_FILE = BASE_DIR / "archive.html"
-INDEX_FILE = BASE_DIR / "index.html"
-POST_TEMPLATE_FILE = BASE_DIR / "post_template.html"
+POST_TEMPLATE = BASE_DIR / "post_template.html"
 
-SITE_URL = "https://trend9.github.io/love-auto"
-OG_IMAGE = f"{SITE_URL}/yui.png"
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+MODEL = "gpt-4o-mini"
 
-POSTS_DIR.mkdir(exist_ok=True)
-DATA_DIR.mkdir(exist_ok=True)
+HEADERS = {
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "Content-Type": "application/json"
+}
 
-# ======================
-# 安全ユーティリティ
-# ======================
-def safe_text(s: str) -> str:
-    return html.escape(s.strip())
+# ----------------------
+# utility
+# ----------------------
+def safe(text):
+    return escape(text)
 
-def now_jst():
-    return datetime.now().strftime("%Y/%m/%d %H:%M")
+def load_json(path, default):
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return default
 
-def now_iso():
-    return datetime.now().isoformat()
+def save_json(path, data):
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def load_questions():
-    if not QUESTIONS_FILE.exists():
-        return []
-    try:
-        with open(QUESTIONS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-def save_questions(data):
-    with open(QUESTIONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# ======================
-# 相談データ（LLM不使用・安定）
-# ======================
-CONSULTATION_POOL = [
-    {
-        "name": "Kazuki",
-        "letter": "私は大学生で、将来のキャリアについて悩んでいます。\n今やっていることが本当に将来に繋がるのか、不安になります。",
-        "answer": "大学生の段階で将来に不安を感じるのは、とても自然なことです。\n今は「決めきる」よりも「試す」時期だと考えてください。\n経験の積み重ねは、後から必ず意味を持ちます。"
-    },
-    {
-        "name": "Mika",
-        "letter": "恋人との将来が見えず、不安になることがあります。\nこのまま続けていいのか悩んでいます。",
-        "answer": "将来が見えないと不安になりますよね。\n一度、今の関係で大切にしたいことを書き出してみてください。\n答えは、行動の中で少しずつ見えてきます。"
+# ----------------------
+# GitHub Models call
+# ----------------------
+def github_llm(prompt: str) -> str:
+    url = "https://models.inference.ai.azure.com/chat/completions"
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは恋愛相談サイト『ゆい姉さんの恋愛相談室』の回答者です。"
+                    "口調は優しく自然、日本語。"
+                    "テンプレ感・箇条書き・定型文は禁止。"
+                )
+            },
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.9,
+        "max_tokens": 1200
     }
-]
+    r = requests.post(url, headers=HEADERS, json=payload)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"].strip()
 
-# ======================
-# メイン生成
-# ======================
+# ----------------------
+# main
+# ----------------------
 def main():
-    questions = load_questions()
+    # ① 質問生成（B）
+    subprocess.run(["python3", "question_generator.py"], check=True)
 
-    source = random.choice(CONSULTATION_POOL)
-    name = safe_text(source["name"])
-    letter = safe_text(source["letter"])
-    answer = safe_text(source["answer"])
+    questions = load_json(QUESTIONS_FILE, [])
+    used = load_json(USED_FILE, [])
 
-    title = f"{name}さんからのお便り"
-    description = letter.split("\n")[0]
+    if not questions:
+        print("⚠ 質問がありません")
+        return
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    post_filename = f"{timestamp}.html"
-    post_path = POSTS_DIR / post_filename
-    post_url = f"posts/{post_filename}"
+    q = questions.pop(0)
+    used.append(q)
 
-    # ----------------------
-    # related 安定生成（完全ガード版）
-    # ----------------------
-    related_items = ""
-    if questions:
-        for q in questions[-3:]:
+    save_json(QUESTIONS_FILE, questions)
+    save_json(USED_FILE, used)
 
-            # id が無ければスキップ（壊れた古い質問）
-            if "id" not in q:
-                continue
+    title = q["title"]
+    body = q["body"]
 
-            # url が無ければ自動補完
-            if "url" not in q:
-                q["url"] = f'posts/{q["id"]}.html'
+    # ② 記事生成（A）
+    prompt = f"""
+以下は読者からの恋愛相談です。
 
-            related_items += f'<li><a href="../{q["url"]}">{safe_text(q["title"])}</a></li>\n'
+【相談内容】
+{body}
 
+これに対して、ゆい姉さんとして1ページの記事を書いてください。
 
-    # ----------------------
-    # 記事HTML生成
-    # ----------------------
-    with open(POST_TEMPLATE_FILE, "r", encoding="utf-8") as f:
-        tpl = f.read()
+条件：
+・冒頭は3〜5行の自然な語り
+・h2 を1つ以上使う
+・h3 を使って具体的なアドバイスを深掘り
+・テンプレ禁止
+・SEOを意識しつつ人間味重視
+"""
 
-    json_ld = {
-        "@context": "https://schema.org",
-        "@type": "Article",
-        "headline": title,
-        "description": description,
-        "datePublished": now_iso(),
-        "author": {
-            "@type": "Person",
-            "name": "結姉さん"
-        },
-        "image": OG_IMAGE,
-        "mainEntityOfPage": {
-            "@type": "WebPage",
-            "@id": f"{SITE_URL}/{post_url}"
-        }
-    }
+    article_html = github_llm(prompt)
 
-    json_ld_script = (
-        '<script type="application/ld+json">'
-        + json.dumps(json_ld, ensure_ascii=False)
-        + '</script>'
-    )
+    now = datetime.datetime.now()
+    post_id = now.strftime("%Y%m%d_%H%M%S")
+    post_path = POSTS_DIR / f"{post_id}.html"
 
-    html_content = tpl
-    html_content = html_content.replace("{{TITLE}}", title)
-    html_content = html_content.replace("{{META}}", description)
-    html_content = html_content.replace("{{DATE}}", now_jst())
-    html_content = html_content.replace("{{NAME}}", name)
-    html_content = html_content.replace("{{LETTER}}", letter)
-    html_content = html_content.replace("{{ANSWER}}", answer)
-    html_content = html_content.replace("{{RELATED}}", related_items)
-    html_content = html_content.replace("{{JSON_LD}}", json_ld_script)
+    html = POST_TEMPLATE.read_text(encoding="utf-8")
+    html = html.replace("{{TITLE}}", safe(title))
+    html = html.replace("{{CONTENT}}", article_html)
+    html = html.replace("{{DATE}}", now.strftime("%Y/%m/%d %H:%M"))
 
-    with open(post_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    post_path.write_text(html, encoding="utf-8")
 
-    # ----------------------
-    # questions.json 永久追加
-    # ----------------------
-    questions.append({
-        "title": title,
-        "url": post_url,
-        "date": now_jst(),
-        "description": description
-    })
-    save_questions(questions)
+    q["url"] = f"posts/{post_id}.html"
 
-    # ----------------------
-    # archive.html 再生成（完全防御版）
-    # ----------------------
-    archive_list = ""
-
-    for q in reversed(questions):
-
-        # id が無いものは壊れた質問なのでスキップ
-        if "id" not in q:
-            continue
-
-        # title が無い場合もスキップ（保険）
-        if "title" not in q:
-            continue
-
-        # url が無ければここで必ず生成
-        if "url" not in q:
-            q["url"] = f'posts/{q["id"]}.html'
-
-        archive_list += (
-            f'<li>'
-            f'<a href="{q["url"]}">{safe_text(q["title"])}</a>'
-            f'</li>\n'
-        )
-
+    # ③ archive 再生成
+    archive_items = ""
+    for item in reversed(used):
+        if "url" in item:
+            archive_items += f'<li><a href="{item["url"]}">{safe(item["title"])}</a></li>\n'
 
     archive_html = f"""<!DOCTYPE html>
 <html lang="ja">
@@ -193,17 +133,15 @@ def main():
 <body>
 <h1>相談アーカイブ</h1>
 <ul>
-{archive_list}
+{archive_items}
 </ul>
-<a href="index.html">← トップへ戻る</a>
 </body>
 </html>
 """
-    with open(ARCHIVE_FILE, "w", encoding="utf-8") as f:
-        f.write(archive_html)
 
-    print("Daily update completed successfully.")
+    ARCHIVE_FILE.write_text(archive_html, encoding="utf-8")
 
-# ======================
+    print("✅ Daily update completed successfully.")
+
 if __name__ == "__main__":
     main()

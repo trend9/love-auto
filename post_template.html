@@ -3,84 +3,131 @@
 <head>
   <meta charset="UTF-8">
 
-  <!-- SEO -->
   <title>{{TITLE}}</title>
-  <meta name="description" content="{{META}}">
+  <meta name="description" content="{{META_DESCRIPTION}}">
+
+  <!-- OGP -->
   <meta property="og:title" content="{{TITLE}}">
-  <meta property="og:description" content="{{META}}">
+  <meta property="og:description" content="{{META_DESCRIPTION}}">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
-  {{JSON_LD}}
 
-  <!-- Mobile -->
+  <!-- JSON-LD（表示されない・SEO専用） -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "{{TITLE}}",
+    "description": "{{META_DESCRIPTION}}",
+    "datePublished": "{{DATE_ISO}}",
+    "author": {
+      "@type": "Person",
+      "name": "結姉さん"
+    },
+    "image": "https://trend9.github.io/love-auto/yui.png",
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "{{PAGE_URL}}"
+    }
+  }
+  </script>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- CSS -->
   <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
 
-  <!-- 共通ヘッダー（index.htmlと同一） -->
-  <header>
-    <h1>結姉さんの恋愛相談室</h1>
-  </header>
+<div class="post-container">
 
-  <div class="container">
+  <!-- 更新日 -->
+  <p class="post-date">更新日：{{DATE_JP}}</p>
 
-    <!-- 記事本体 -->
-    <article class="site-intro">
+  <!-- タイトル -->
+  <h1 class="post-title">{{TITLE}}</h1>
 
-      <p class="post-date">更新日：{{DATE}}</p>
+  <!-- 導入文（AI要約されやすい） -->
+  <p class="post-lead">
+    恋愛に悩んだとき、「これって脈あり？」「相手はどう思っているの？」と不安になりますよね。
+    今回は {{KEYWORD}} について、心理面と行動の両方から丁寧に解説します。
+  </p>
 
-      <h1 class="post-title">{{NAME}}さんからのお便り</h1>
+  <!-- 相談内容 -->
+  <section class="letter-section">
+    <h2 class="section-title">お便り内容</h2>
+    <p class="post-text" style="white-space: pre-wrap;">
+{{QUESTION}}
+    </p>
+  </section>
 
-      <!-- お便り -->
-      <section class="letter-section">
-        <h2 class="section-title">お便り内容</h2>
-        <p class="post-text" style="white-space: pre-wrap;">
-{{LETTER}}
-        </p>
-      </section>
+  <!-- 結論ファースト -->
+  <section class="answer-section">
+    <h2 class="section-title">結論からお伝えします</h2>
+    <p class="post-text">
+      {{SUMMARY_ANSWER}}
+    </p>
+  </section>
 
-      <!-- 回答 -->
-      <section class="answer-section">
-        <h2 class="section-title">結姉さんからの回答</h2>
-        <p class="post-text" style="white-space: pre-wrap;">
-{{ANSWER}}
-        </p>
-      </section>
+  <!-- 心理解説 -->
+  <section class="answer-section">
+    <h2 class="section-title">相手の心理として考えられること</h2>
+    <p class="post-text">
+      {{PSYCHOLOGY}}
+    </p>
+  </section>
 
-      <!-- 関連記事 -->
-      <section class="related-section">
-        <h2 class="section-title">こんな相談も読まれています</h2>
-        <ul class="related-list">
-{{RELATED}}
-        </ul>
-      </section>
-      <nav class="post-nav">
-        <a href="20260121_135304.html" class="prev">← 前の記事</a>
-        <a href="20260122_034821.html" class="next">次の記事 →</a>
-      </nav>
+  <!-- 行動アドバイス -->
+  <section class="answer-section">
+    <h2 class="section-title">今あなたが取るべき行動</h2>
+    <ul class="advice-list">
+      {{ACTION_LIST}}
+    </ul>
+  </section>
 
-      <!-- 戻る -->
-      <div class="back-area">
-        <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
-      </div>
+  <!-- NG行動 -->
+  <section class="answer-section">
+    <h2 class="section-title">やってはいけない行動</h2>
+    <ul class="ng-list">
+      {{NG_LIST}}
+    </ul>
+  </section>
 
-    </article>
+  <!-- よくある勘違い -->
+  <section class="answer-section">
+    <h2 class="section-title">よくある勘違い</h2>
+    <p class="post-text">
+      {{MISUNDERSTANDING}}
+    </p>
+  </section>
+
+  <!-- まとめ -->
+  <section class="answer-section">
+    <h2 class="section-title">まとめ</h2>
+    <p class="post-text">
+      {{CONCLUSION}}
+    </p>
+  </section>
+
+  <!-- 関連記事 -->
+  <section class="related-section">
+    <h2 class="section-title">こんな相談も読まれています</h2>
+    <ul class="related-list">
+      {{RELATED}}
+    </ul>
+  </section>
+
+  <!-- 前後ナビ -->
+  <nav class="post-nav">
+    {{PREV}}
+    {{NEXT}}
+  </nav>
+
+  <!-- 戻る -->
+  <div class="back-area">
+    <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
   </div>
 
-  <!-- PC用 立ち絵 -->
-  <div class="yui-pc-fixed">
-    <div class="yui-bubble">また相談しに来てね</div>
-    <img src="../yui.png" alt="結姉さん">
-  </div>
-
-  <!-- モバイル用 ちびキャラ -->
-  <div class="yui-chibi-fixed">
-    <img src="../yuichibi.png" alt="結姉さん">
-  </div>
+</div>
 
 </body>
 </html>
