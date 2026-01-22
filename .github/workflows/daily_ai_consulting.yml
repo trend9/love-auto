@@ -21,7 +21,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # ← 念のため（重要）
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install requests
 
       - name: Run daily update
@@ -42,6 +42,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add posts/*.html data/questions.json archive.html index.html
-          git commit -m "Daily update by Yui AI" || exit 0
-          git push origin main
+          git add posts/*.html data/questions.json archive.html index.html data/used_questions.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Daily update by Yui AI"
+          git push origin HEAD:main
