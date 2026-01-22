@@ -1,97 +1,131 @@
-import json
 import os
-import re
-import html
-from datetime import datetime
+import json
+import datetime
 from pathlib import Path
-from llama_cpp import Llama
+import html
+import re
 
-# =========================
-# パス設定
-# =========================
 BASE_DIR = Path(__file__).parent
 POSTS_DIR = BASE_DIR / "posts"
 DATA_DIR = BASE_DIR / "data"
 QUESTIONS_JSON = DATA_DIR / "questions.json"
-TEMPLATE_PATH = BASE_DIR / "post_template.html"
+POST_TEMPLATE = BASE_DIR / "post_template.html"
 
 POSTS_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
-# =========================
-# LLM 初期化
-# =========================
-llm = Llama(
-    model_path=str(BASE_DIR / "models" / "model.gguf"),
-    n_ctx=1024,
-    temperature=0.7,
-)
+# -----------------------
+# ユーティリティ
+# -----------------------
 
-# =========================
-# プロンプト（JSON風テキスト生成）
-# =========================
-PROMPT = """
-以下の項目を日本語で作成してください。
-JSONやコードは書かず、項目名も書かないでください。
+def now_jst():
+    return datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9)))
 
-タイトル：
-ラジオネーム：
-相談文：
-回答文：
-メタディスクリプション：
-"""
+def safe_text(s: str) -> str:
+    if not s:
+        return ""
+    return html.escape(s.strip())
 
-response = llm(PROMPT, max_tokens=900)
-text = response["choices"][0]["text"]
+def normalize_whitespace(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
-# =========================
-# 強制抽出（JSON不使用）
-# =========================
-def extract(label, text):
-    pattern = rf"{label}：(.*?)(?=\n\S+：|\Z)"
-    m = re.search(pattern, text, re.S)
-    return m.group(1).strip() if m else ""
+def summarize_for_title(text: str, max_len=32):
+    text = re.sub(r"\s+", " ", text)
+    return text[:max_len] if len(text) > max_len else text
 
-title = extract("タイトル", text)
-radio_name = extract("ラジオネーム", text)
-letter = extract("相談文", text)
-answer = extract("回答文", text)
-meta = extract("メタディスクリプション", text)
+def summarize_for_description(text: str, max_len=110):
+    text = re.sub(r"\s+", " ", text)
+    return text[:max_len] if len(text) > max_len else text
 
-# =========================
-# サニタイズ
-# =========================
-def clean(s):
-    return html.escape(
-        s.replace("\r", "")
-         .replace("\n", "<br>")
-         .strip()
+def is_bad_meta(text: str) -> bool:
+    if not text:
+        return True
+    if len(text.strip()) < 6:
+        return True
+    if text.strip() in ["相談", "相談相談"]:
+        return True
+    return False
+
+# -----------------------
+# 永久蓄積JSONの読み込み
+# -----------------------
+
+if QUESTIONS_JSON.exists():
+    with open(QUESTIONS_JSON, "r", encoding="utf-8") as f:
+        questions = json.load(f)
+else:
+    questions = []
+
+# -----------------------
+# 相談生成（※ここは既存生成物を使う前提）
+# -----------------------
+# ここでは「すでに生成済みの相談・回答が入ってくる」前提
+# 実運用ではこの部分がAI生成に差し替わる
+
+letter_text = normalize_whitespace("""
+私は大学生で、将来のキャリアについて悩んでいます。
+今やっていることが本当に将来に繋がるのか、不安になります。
+""")
+
+answer_text = normalize_whitespace("""
+大学生の段階で将来に不安を感じるのは、とても自然なことです。
+今は「決めきる」よりも「試す」時期だと考えてください。
+経験の積み重ねが、後から意味を持つことも多いですよ。
+""")
+
+sender_name = "Kazuki"
+
+# -----------------------
+# メタ生成（失敗防止）
+# -----------------------
+
+raw_title = f"{sender_name}さんからのお便り"
+raw_description = letter_text
+
+title = summarize_for_title(raw_title, 32)
+description = summarize_for_description(raw_description, 110)
+
+if is_bad_meta(title):
+    title = summarize_for_title(letter_text, 32)
+
+if is_bad_meta(description):
+    description = summarize_for_description(letter_text, 110)
+
+# -----------------------
+# ファイル名生成
+# -----------------------
+
+dt = now_jst()
+slug = dt.strftime("%Y%m%d_%H%M%S")
+post_filename = f"{slug}.html"
+post_path = POSTS_DIR / post_filename
+post_url = f"posts/{post_filename}"
+
+# -----------------------
+# 関連記事生成
+# -----------------------
+
+related_items = []
+for q in reversed(questions[-5:]):
+    related_items.append(
+        f'<li><a href="../{q["url"]}">{html.escape(q["title"])}</a></li>'
     )
 
-title = clean(title)[:60]
-radio_name = clean(radio_name)[:10]
-letter = clean(letter)
-answer = clean(answer)
-meta = clean(meta)[:120]
+if not related_items:
+    related_html = "<li>現在、関連する相談はありません</li>"
+else:
+    related_html = "\n".join(related_items)
 
-# =========================
-# 日付・URL
-# =========================
-now = datetime.now()
-date_str = now.strftime("%Y/%m/%d %H:%M")
-slug = now.strftime("%Y%m%d_%H%M%S")
-filename = f"{slug}.html"
-url = f"posts/{filename}"
-
-# =========================
+# -----------------------
 # JSON-LD
-# =========================
+# -----------------------
+
 json_ld = {
     "@context": "https://schema.org",
     "@type": "Article",
     "headline": title,
-    "description": meta,
-    "datePublished": now.isoformat(),
+    "description": description,
+    "datePublished": dt.isoformat(),
     "author": {
         "@type": "Person",
         "name": "結姉さん"
@@ -99,50 +133,45 @@ json_ld = {
     "image": "https://trend9.github.io/love-auto/yui.png",
     "mainEntityOfPage": {
         "@type": "WebPage",
-        "@id": f"https://trend9.github.io/love-auto/{url}"
+        "@id": f"https://trend9.github.io/love-auto/{post_url}"
     }
 }
 
-# =========================
+# -----------------------
 # HTML生成
-# =========================
-template = TEMPLATE_PATH.read_text(encoding="utf-8")
+# -----------------------
 
-html_out = (
-    template
-    .replace("{{TITLE}}", title)
-    .replace("{{META}}", meta)
-    .replace("{{DATE}}", date_str)
-    .replace("{{NAME}}", radio_name)
-    .replace("{{LETTER}}", letter)
-    .replace("{{ANSWER}}", answer)
-    .replace(
-        "{{JSON_LD}}",
-        f'<script type="application/ld+json">{json.dumps(json_ld, ensure_ascii=False)}</script>'
-    )
+with open(POST_TEMPLATE, "r", encoding="utf-8") as f:
+    template = f.read()
+
+html_content = template
+html_content = html_content.replace("{{TITLE}}", safe_text(title))
+html_content = html_content.replace("{{DESCRIPTION}}", safe_text(description))
+html_content = html_content.replace("{{DATE}}", dt.strftime("%Y/%m/%d %H:%M"))
+html_content = html_content.replace("{{SENDER}}", safe_text(sender_name))
+html_content = html_content.replace("{{LETTER}}", safe_text(letter_text))
+html_content = html_content.replace("{{ANSWER}}", safe_text(answer_text))
+html_content = html_content.replace("{{RELATED}}", related_html)
+html_content = html_content.replace(
+    "{{JSON_LD}}",
+    json.dumps(json_ld, ensure_ascii=False)
 )
 
-(POSTS_DIR / filename).write_text(html_out, encoding="utf-8")
+with open(post_path, "w", encoding="utf-8") as f:
+    f.write(html_content)
 
-# =========================
-# questions.json 永久蓄積
-# =========================
-if QUESTIONS_JSON.exists():
-    questions = json.loads(QUESTIONS_JSON.read_text(encoding="utf-8"))
-else:
-    questions = []
+# -----------------------
+# questions.json 追記（削除しない）
+# -----------------------
 
-if not any(q["url"] == url for q in questions):
-    questions.insert(0, {
-        "title": title,
-        "url": url,
-        "date": date_str,
-        "description": meta
-    })
+questions.append({
+    "title": title,
+    "url": post_url,
+    "date": dt.strftime("%Y/%m/%d %H:%M"),
+    "description": description
+})
 
-QUESTIONS_JSON.write_text(
-    json.dumps(questions, ensure_ascii=False, indent=2),
-    encoding="utf-8"
-)
+with open(QUESTIONS_JSON, "w", encoding="utf-8") as f:
+    json.dump(questions, f, ensure_ascii=False, indent=2)
 
-print("✅ Generated:", filename)
+print("✅ daily_update.py completed successfully")
