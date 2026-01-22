@@ -10,54 +10,72 @@
   <meta property="og:description" content="{{META}}">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
-    {{JSON_LD}}
+  {{JSON_LD}}
 
   <!-- Mobile -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- CSS（posts配下なので ../） -->
+  <!-- CSS -->
   <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
 
-  <div class="post-container">
+  <!-- 共通ヘッダー（index.htmlと同一） -->
+  <header>
+    <h1>結姉さんの恋愛相談室</h1>
+  </header>
 
-    <!-- 更新日 -->
-    <p class="post-date">更新日：{{DATE}}</p>
+  <div class="container">
 
-    <!-- タイトル -->
-    <h1 class="post-title">{{NAME}}さんからのお便り</h1>
+    <!-- 記事本体 -->
+    <article class="site-intro">
 
-    <!-- 相談内容 -->
-    <section class="letter-section">
-      <h2 class="section-title">お便り内容</h2>
-      <p class="post-text" style="white-space: pre-wrap;">
+      <p class="post-date">更新日：{{DATE}}</p>
+
+      <h1 class="post-title">{{NAME}}さんからのお便り</h1>
+
+      <!-- お便り -->
+      <section class="letter-section">
+        <h2 class="section-title">お便り内容</h2>
+        <p class="post-text" style="white-space: pre-wrap;">
 {{LETTER}}
-      </p>
-    </section>
+        </p>
+      </section>
 
-    <!-- 回答 -->
-    <section class="answer-section">
-      <h2 class="section-title">結姉さんからの回答</h2>
-      <p class="post-text" style="white-space: pre-wrap;">
+      <!-- 回答 -->
+      <section class="answer-section">
+        <h2 class="section-title">結姉さんからの回答</h2>
+        <p class="post-text" style="white-space: pre-wrap;">
 {{ANSWER}}
-      </p>
-    </section>
+        </p>
+      </section>
 
-    <!-- 関連記事 -->
-    <section class="related-section">
-      <h2 class="section-title">こんな相談も読まれています</h2>
-      <ul class="related-list">
+      <!-- 関連記事 -->
+      <section class="related-section">
+        <h2 class="section-title">こんな相談も読まれています</h2>
+        <ul class="related-list">
 {{RELATED}}
-      </ul>
-    </section>
+        </ul>
+      </section>
 
-    <!-- 戻る -->
-    <div class="back-area">
-      <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
-    </div>
+      <!-- 戻る -->
+      <div class="back-area">
+        <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
+      </div>
 
+    </article>
+  </div>
+
+  <!-- PC用 立ち絵 -->
+  <div class="yui-pc-fixed">
+    <div class="yui-bubble">また相談しに来てね</div>
+    <img src="../yui.png" alt="結姉さん">
+  </div>
+
+  <!-- モバイル用 ちびキャラ -->
+  <div class="yui-chibi-fixed">
+    <img src="../yuichibi.png" alt="結姉さん">
   </div>
 
 </body>
