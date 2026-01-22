@@ -4,14 +4,30 @@
 <meta charset="UTF-8">
 <title>相談アーカイブ</title>
 <link rel="stylesheet" href="style.css">
+    <style>
+        body { margin: 0; padding: 0; background-color: #fff9fb; font-family: sans-serif; }
+        .site-wrapper { display: grid; grid-template-columns: 300px 1fr 300px; gap: 20px; max-width: 1400px; margin: 0 auto; }
+        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; min-height: 100vh; }
+        .yui-word { background: #fff0f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; border: 1px dashed #d63384; }
+        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #f9f9f9; display: flex; align-items: center; justify-content: center; border: 1px solid #eee; }
+        main { background: white; padding: 40px; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.02); }
+        .search-box { text-align: right; margin-bottom: 20px; }
+        .search-box input { padding: 8px; border: 1px solid #ffc0cb; border-radius: 5px; width: 200px; }
+        header h1 { color: #d63384; border-bottom: 3px solid #ffc0cb; padding-bottom: 10px; }
+        .sidebar-right { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .yui-img { width: 100%; height: auto; display: block; }
+        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        @media (max-width: 1100px) {
+            .site-wrapper { grid-template-columns: 1fr; }
+            .sidebar-left, .sidebar-right { display: none; }
+        }
+    </style>
 </head>
 <body>
 <h1>相談アーカイブ</h1>
 <ul>
 <li><a href="posts/20260122_042236.html">Mikaさんからのお便り</a></li>
-<li><a href="posts/20260122_041436.html">Mikaさんからのお便り</a></li>
-<li><a href="posts/20260122_035742.html">Mikaさんからのお便り</a></li>
-<li><a href="posts/20260122_034811.html">Mikaさんからのお便り</a></li>
 
 </ul>
 <a href="index.html">← トップへ戻る</a>
