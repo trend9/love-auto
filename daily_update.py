@@ -8,7 +8,6 @@ from llama_cpp import Llama
 # =========================
 
 MODEL_PATH = "./models/model.gguf"
-
 QUESTIONS_PATH = "data/questions.json"
 USED_PATH = "data/used_questions.json"
 
@@ -17,10 +16,10 @@ POST_DIR = "posts"
 SITE_URL = "https://trend9.github.io/love-auto"
 
 MAX_CONTEXT = 4096
-MAX_RETRY = 5
+MAX_RETRY = 3
 
 # =========================
-# LLM（★1回だけロード）
+# LLM（★1回ロード）
 # =========================
 
 llm = Llama(
@@ -39,11 +38,8 @@ llm = Llama(
 def load_json(path, default):
     if not os.path.exists(path):
         return default
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return default
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -55,7 +51,7 @@ def save_text(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def esc(t: str) -> str:
+def esc(t):
     return (
         t.replace("&", "&amp;")
          .replace("<", "&lt;")
@@ -64,17 +60,17 @@ def esc(t: str) -> str:
     )
 
 def today():
-    now = datetime.now()
+    n = datetime.now()
     return {
-        "iso": now.isoformat(),
-        "jp": now.strftime("%Y年%m月%d日")
+        "iso": n.isoformat(),
+        "jp": n.strftime("%Y年%m月%d日")
     }
 
 # =========================
 # Article Generate（JSON保証）
 # =========================
 
-REQUIRED_FIELDS = {
+REQUIRED = {
     "lead": 80,
     "summary": 120,
     "psychology": 150,
@@ -84,81 +80,69 @@ REQUIRED_FIELDS = {
     "conclusion": 120
 }
 
-def generate_article_struct(question: str) -> dict:
+def generate_article(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONを**必ずすべて埋めて**出力してください。
-1つでも欠けたら失敗です。
+以下のJSONを**完全に埋めて**ください。
+JSON以外は出力禁止。
 
-【厳守】
-・JSON以外は出力しない
-・説教しない／断定しない
-・共感と具体例重視
-
-【JSON形式】
 {{
-  "lead": "導入文（80文字以上）",
-  "summary": "結論（120文字以上）",
-  "psychology": "相手の心理解説（150文字以上）",
-  "actions": ["具体行動1", "具体行動2", "具体行動3"],
-  "ng": ["避けたい行動1", "避けたい行動2"],
-  "misunderstanding": "よくある誤解（100文字以上）",
-  "conclusion": "まとめ（120文字以上）"
+  "lead": "",
+  "summary": "",
+  "psychology": "",
+  "actions": ["", "", ""],
+  "ng": ["", ""],
+  "misunderstanding": "",
+  "conclusion": ""
 }}
 
-【相談内容】
+【相談】
 {question}
 """
     r = llm(prompt, max_tokens=2800)
     return json.loads(r["choices"][0]["text"].strip())
 
-def validate_article(data: dict):
-    for k, v in REQUIRED_FIELDS.items():
-        if k not in data:
-            raise ValueError(f"{k} 欠落")
+def validate(d):
+    for k, v in REQUIRED.items():
+        if k not in d:
+            raise ValueError(k)
         if isinstance(v, int):
-            if not isinstance(data[k], str) or len(data[k]) < v:
-                raise ValueError(f"{k} 短すぎ")
+            if len(d[k]) < v:
+                raise ValueError(k)
         else:
-            if not isinstance(data[k], list) or len(data[k]) < v:
-                raise ValueError(f"{k} 要素不足")
+            if len(d[k]) < v:
+                raise ValueError(k)
 
 # =========================
-# Main（質問生成ゼロ）
+# Main
 # =========================
 
 def main():
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_PATH, [])
 
-    if not questions:
-        raise RuntimeError("questions.json が空です")
-
     used_ids = {u["id"] for u in used}
     unused = [q for q in questions if q["id"] not in used_ids]
 
     if not unused:
-        raise RuntimeError("未使用の質問がありません")
+        raise RuntimeError("未使用質問が存在しない（設計違反）")
 
-    # ★ 未使用質問を1件取得
     q = unused[0]
     today_info = today()
 
-    # --- 記事生成 ---
     article = None
-    for i in range(MAX_RETRY):
+    for _ in range(MAX_RETRY):
         try:
-            article = generate_article_struct(q["question"])
-            validate_article(article)
+            article = generate_article(q["question"])
+            validate(article)
             break
-        except Exception as e:
-            print(f"⚠️ 再生成 {i+1}/{MAX_RETRY}: {e}")
+        except:
+            continue
 
     if article is None:
-        raise RuntimeError("記事生成に失敗しました")
+        raise RuntimeError("記事生成失敗")
 
-    # --- HTML生成 ---
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -172,30 +156,18 @@ def main():
            .replace("{{QUESTION}}", esc(q["question"]))
            .replace("{{SUMMARY_ANSWER}}", esc(article["summary"]))
            .replace("{{PSYCHOLOGY}}", esc(article["psychology"]))
-           .replace(
-               "{{ACTION_LIST}}",
-               "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"])
-           )
-           .replace(
-               "{{NG_LIST}}",
-               "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"])
-           )
+           .replace("{{ACTION_LIST}}", "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"]))
+           .replace("{{NG_LIST}}", "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"]))
            .replace("{{MISUNDERSTANDING}}", esc(article["misunderstanding"]))
            .replace("{{CONCLUSION}}", esc(article["conclusion"]))
-           .replace("{{RELATED}}", "")
-           .replace("{{PREV}}", "")
-           .replace("{{NEXT}}", "")
-           .replace("{{CANONICAL}}", "")
-           .replace("{{FAQ}}", "")
     )
 
     save_text(os.path.join(POST_DIR, f"{q['slug']}.html"), html)
 
-    # --- 使用済み記録 ---
     used.append({"id": q["id"]})
     save_json(USED_PATH, used)
 
-    print("✅ 記事生成完了（質問生成ゼロ・完全分離）")
+    print("✅ 記事生成完了")
 
 if __name__ == "__main__":
     main()
