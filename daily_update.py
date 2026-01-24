@@ -24,7 +24,7 @@ MAX_CONTEXT = 4096
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
-    temperature=0.85,
+    temperature=0.7,          # 安定優先
     top_p=0.9,
     repeat_penalty=1.1,
     verbose=False,
@@ -53,7 +53,7 @@ def save_text(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def esc(t: str) -> str:
+def esc(t):
     return (
         t.replace("&", "&amp;")
          .replace("<", "&lt;")
@@ -85,62 +85,61 @@ def contains_english(text: str) -> bool:
     return bool(re.search(r"[A-Za-z]", text))
 
 # =========================
-# Question Generate（必ず成功）
+# Question Generate（必ず1件）
 # =========================
 
 def generate_question():
-    while True:
-        prompt = """
+    prompt = """
 恋愛・人間関係の実体験相談を1件生成してください。
 
 【条件】
-・日本語のみ（英語禁止）
 ・具体的な出来事と感情を含める
+・日本語のみ
 ・タイトル20文字以上
 ・本文120文字以上
-・説明文・注釈・例は禁止
 
 【形式】
 タイトル：〇〇〇
 質問：〇〇〇
 """
-        r = llm(prompt, max_tokens=700)
-        text = r["choices"][0]["text"].strip()
+    r = llm(prompt, max_tokens=700)
+    text = r["choices"][0]["text"].strip()
 
-        if "タイトル：" not in text or "質問：" not in text:
-            continue
+    if "タイトル：" not in text or "質問：" not in text:
+        raise RuntimeError("質問生成失敗")
 
-        title = text.split("タイトル：")[1].split("質問：")[0].strip()
-        body = text.split("質問：")[1].strip()
+    title = text.split("タイトル：")[1].split("質問：")[0].strip()
+    body = text.split("質問：")[1].strip()
 
-        if len(title) < 20 or len(body) < 120:
-            continue
+    if len(title) < 20 or len(body) < 120:
+        raise RuntimeError("質問文字数不足")
 
-        if contains_english(title + body):
-            continue
-
-        return title, body
+    return title, body
 
 # =========================
-# Article Generate（一次生成・多少雑OK）
+# Article Generate（一次）
 # =========================
 
 def generate_article_raw(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONを出力してください。
-多少文章が荒くても構いません。
+以下のJSONを必ず出力してください。
+JSON以外は禁止。
 
-【JSON】
+【重要】
+・日本語で書く
+・英語は使わない
+・構造厳守
+
 {{
-  "lead": "導入文",
-  "summary": "結論",
-  "psychology": "相手の心理",
+  "lead": "80文字以上",
+  "summary": "120文字以上",
+  "psychology": "150文字以上",
   "actions": ["行動1", "行動2", "行動3"],
   "ng": ["NG1", "NG2"],
-  "misunderstanding": "よくある誤解",
-  "conclusion": "まとめ"
+  "misunderstanding": "100文字以上",
+  "conclusion": "120文字以上"
 }}
 
 相談内容：
@@ -150,41 +149,28 @@ def generate_article_raw(question):
     return r["choices"][0]["text"].strip()
 
 # =========================
-# Article Rewrite（清書・品質保証）
+# 清書LLM（英語除去＋整形のみ）
 # =========================
 
-def rewrite_article_clean(raw_json_text, question):
+def rewrite_article_clean(raw_json_text):
     prompt = f"""
-以下はAIが生成した恋愛相談記事JSONです。
+以下のJSONを修正してください。
 
-【必須ルール】
-・日本語のみ（英語があれば完全削除）
-・注釈、例文、説明文、生成痕跡は全削除
-・意味を変えず自然な日本語に清書
-・SEO向けに読みやすく整理
-・JSON形式厳守
-・各項目は十分な文字量で書き直す
+【目的】
+・英語があれば削除
+・不自然な日本語を整えるだけ
+・意味は変えない
+・長文化しない
 
-【JSON形式】
-{{
-  "lead": "80文字以上",
-  "summary": "120文字以上",
-  "psychology": "150文字以上",
-  "actions": ["具体行動1", "具体行動2", "具体行動3"],
-  "ng": ["避けたい行動1", "避けたい行動2"],
-  "misunderstanding": "100文字以上",
-  "conclusion": "120文字以上"
-}}
+【厳守】
+・JSON形式のみ出力
+・キー構造は変更禁止
 
-【相談内容】
-{question}
-
-【元JSON】
+【JSON】
 {raw_json_text}
 """
-    r = llm(prompt, max_tokens=2600)
-    text = r["choices"][0]["text"].strip()
-    return json.loads(text)
+    r = llm(prompt, max_tokens=1200)
+    return r["choices"][0]["text"].strip()
 
 # =========================
 # Main
@@ -211,11 +197,17 @@ def main():
     questions.append(question)
     save_json(QUESTIONS_PATH, questions)
 
-    # ② 記事生成 → 清書
+    # ② 記事生成（一次）
     raw_article = generate_article_raw(body)
-    article = rewrite_article_clean(raw_article, body)
 
-    # ③ HTML生成
+    # ③ 英語が含まれていたら清書
+    if contains_english(raw_article):
+        clean_text = rewrite_article_clean(raw_article)
+        article = json.loads(clean_text)
+    else:
+        article = json.loads(raw_article)
+
+    # ④ HTML生成
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -244,7 +236,7 @@ def main():
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
 
-    print("✅ 完全自動・安定生成（清書込み）完了")
+    print("✅ 完全自動・安定生成（清書軽量版）完了")
 
 if __name__ == "__main__":
     main()
