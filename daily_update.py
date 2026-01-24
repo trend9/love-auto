@@ -19,7 +19,7 @@ SITE_URL = "https://trend9.github.io/love-auto"
 AUTHOR_NAME = "ゆい姉さん"
 GOOGLE_VERIFICATION = "2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4"
 
-MAX_CONTEXT = 2048
+MAX_CONTEXT = 3072
 
 # =========================
 # Directories

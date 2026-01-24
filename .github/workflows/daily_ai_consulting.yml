@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       # ----------------------
-      # 3. Cache pip（高速）
+      # 2. Cache pip（高速）
       # ----------------------
       - name: Cache pip
         uses: actions/cache@v4
@@ -43,16 +43,16 @@ jobs:
             ${{ runner.os }}-pip-
 
       # ----------------------
-      # 4. Cache LLM model（最重要）
+      # 3. Cache LLM model（Q4）
       # ----------------------
       - name: Cache LLM model
         uses: actions/cache@v4
         with:
           path: models
-          key: ${{ runner.os }}-llm-model-q2k-v1
+          key: ${{ runner.os }}-llm-model-q4km-v1
 
       # ----------------------
-      # 5. Install dependencies
+      # 4. Install dependencies
       # ----------------------
       - name: Install dependencies
         run: |
@@ -60,28 +60,28 @@ jobs:
           pip install llama-cpp-python
 
       # ----------------------
-      # 6. Download model（未キャッシュ時のみ）
+      # 5. Download model（未キャッシュ時のみ）
       # ----------------------
       - name: Download Llama model
         run: |
           if [ ! -f models/model.gguf ]; then
-            echo "⬇️ Downloading LLM model..."
+            echo "⬇️ Downloading Q4 LLM model..."
             mkdir -p models
             curl -L --retry 3 -o models/model.gguf \
-            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
+            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
           else
-            echo "✅ LLM model cache hit"
+            echo "✅ LLM model cache hit (Q4)"
           fi
 
       # ----------------------
-      # 7. Run generator
+      # 6. Run generator
       # ----------------------
       - name: Run daily update
         run: |
           python daily_update.py
 
       # ----------------------
-      # 8. Commit & push
+      # 7. Commit & push
       # ----------------------
       - name: Commit and push changes
         run: |
