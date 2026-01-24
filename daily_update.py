@@ -53,7 +53,7 @@ def save_text(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def esc(t):
+def esc(t: str) -> str:
     return (
         t.replace("&", "&amp;")
          .replace("<", "&lt;")
@@ -94,6 +94,7 @@ def generate_question():
 ・具体的な出来事と感情を含める
 ・タイトル20文字以上
 ・本文120文字以上
+・説明文や補足は禁止
 
 【形式】
 タイトル：〇〇〇
@@ -108,39 +109,51 @@ def generate_question():
         title = text.split("タイトル：")[1].split("質問：")[0].strip()
         body = text.split("質問：")[1].strip()
 
+        # 生成ゴミ除去
+        body = body.split("【生成】")[0].strip()
+
         if len(title) >= 20 and len(body) >= 120:
             return title, body
 
 # =========================
-# Article Generate（JSON保証）
+# Article Generate（JSON保証＋保険）
 # =========================
 
 def generate_article(question):
-    for _ in range(2):
+    for _ in range(3):
         try:
             prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONを必ず出力してください。
+以下のJSONを必ずすべて埋めて出力してください。
 JSON以外は禁止。
 
 {{
-  "lead": "80文字以上",
-  "summary": "120文字以上",
-  "psychology": "150文字以上",
-  "actions": ["行動1", "行動2", "行動3"],
-  "ng": ["NG1", "NG2"],
-  "misunderstanding": "100文字以上",
-  "conclusion": "120文字以上"
+  "lead": "読者の感情を代弁する導入文（80文字以上・疑問文禁止）",
+  "summary": "結論（120文字以上）",
+  "psychology": "相手の心理解説（150文字以上）",
+  "actions": ["具体行動1", "具体行動2", "具体行動3"],
+  "ng": ["避けたい行動1", "避けたい行動2"],
+  "misunderstanding": "よくある誤解（100文字以上）",
+  "conclusion": "まとめ（120文字以上）"
 }}
 
 相談内容：
 {question}
 """
-            r = llm(prompt, max_tokens=2500)
-            return json.loads(r["choices"][0]["text"])
+            r = llm(prompt, max_tokens=2600)
+            article = json.loads(r["choices"][0]["text"])
+
+            # NG保険
+            if len(article.get("ng", [])) < 2:
+                article.setdefault("ng", []).append(
+                    "相手の気持ちを決めつけて行動してしまう"
+                )
+
+            return article
         except:
             continue
+
     raise RuntimeError("記事生成失敗")
 
 # =========================
@@ -150,7 +163,7 @@ JSON以外は禁止。
 def main():
     questions = load_json(QUESTIONS_PATH, [])
 
-    # ① 質問生成（必ず1件）
+    # ① 質問生成（常に新規）
     title, body = generate_question()
     slug = slugify_jp(title)
     qid = uid()
@@ -186,8 +199,14 @@ def main():
            .replace("{{QUESTION}}", esc(body))
            .replace("{{SUMMARY_ANSWER}}", esc(article["summary"]))
            .replace("{{PSYCHOLOGY}}", esc(article["psychology"]))
-           .replace("{{ACTION_LIST}}", "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"]))
-           .replace("{{NG_LIST}}", "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"]))
+           .replace(
+               "{{ACTION_LIST}}",
+               "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"])
+           )
+           .replace(
+               "{{NG_LIST}}",
+               "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"])
+           )
            .replace("{{MISUNDERSTANDING}}", esc(article["misunderstanding"]))
            .replace("{{CONCLUSION}}", esc(article["conclusion"]))
            .replace("{{RELATED}}", "")
