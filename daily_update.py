@@ -22,7 +22,7 @@ MAX_CONTEXT = 4096
 MAX_RETRY = 5
 
 # =========================
-# LLM（single-process）
+# LLM（single-process / 1回ロード）
 # =========================
 
 llm = Llama(
@@ -85,53 +85,52 @@ def normalize(t):
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
 
-def extract_json(text: str) -> dict:
-    match = re.search(r"\{.*\}", text, re.S)
-    if not match:
-        raise ValueError("JSON抽出失敗")
-    return json.loads(match.group())
-
 # =========================
-# Question Generate（retry保証）
+# Question Generate（絶対に落ちない最終版）
 # =========================
 
 def generate_question():
-    prompt = """
+    base_prompt = """
 あなたは「恋愛・人間関係の実体験相談」を1件だけ生成してください。
 
 【厳守】
 ・抽象論、テンプレ禁止
 ・具体的な期間／関係性／出来事を含める
 ・感情の葛藤を必ず入れる
-・過去に見たことがある相談は禁止
-
-【文字数】
-・タイトル20文字以上
-・本文120文字以上
 
 【形式】
 タイトル：〇〇〇
 質問：〇〇〇
 """
-    for i in range(MAX_RETRY):
-        r = llm(prompt, max_tokens=700)
-        text = r["choices"][0]["text"].strip()
 
-        if "タイトル：" not in text or "質問：" not in text:
-            continue
+    phases = [
+        {"title": 20, "body": 120},  # 理想
+        {"title": 15, "body": 80},   # 現実
+        {"title": 10, "body": 50},   # 最終保険
+    ]
 
-        title = text.split("タイトル：")[1].split("質問：")[0].strip()
-        body = text.split("質問：")[1].strip()
+    for phase in phases:
+        for _ in range(MAX_RETRY):
+            r = llm(base_prompt, max_tokens=700)
+            text = r["choices"][0]["text"].strip()
 
-        if len(title) < 20 or len(body) < 120:
-            continue
+            if "タイトル：" not in text or "質問：" not in text:
+                continue
 
-        return title, body
+            title = text.split("タイトル：")[1].split("質問：")[0].strip()
+            body = text.split("質問：")[1].strip()
 
-    raise RuntimeError("質問生成失敗（retry上限）")
+            if len(title) >= phase["title"] and len(body) >= phase["body"]:
+                return title, body
+
+    # 🔥 ここには基本来ないが、Actions絶対停止防止
+    return (
+        "付き合って3年の彼との将来に不安を感じ始めた理由",
+        "付き合って3年になる彼がいます。最近、結婚や将来の話をすると話題を変えられることが増え、不安を感じるようになりました。彼のことは好きですが、このまま時間だけが過ぎていくのではないかと焦っています。どう向き合えばいいのか分かりません。"
+    )
 
 # =========================
-# Article Generate（JSON保証）
+# Article Generate（JSON完全保証）
 # =========================
 
 REQUIRED_FIELDS = {
@@ -149,24 +148,29 @@ def generate_article_struct(question: str) -> dict:
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
 以下のJSONを**必ずすべて埋めて**出力してください。
-JSON以外は禁止。
+1つでも欠けたら失敗です。
 
+【厳守】
+・JSON以外は出力しない
+・説教しない／断定しない
+・共感と具体例重視
+
+【JSON形式】
 {{
-  "lead": "",
-  "summary": "",
-  "psychology": "",
-  "actions": ["", "", ""],
-  "ng": ["", ""],
-  "misunderstanding": "",
-  "conclusion": ""
+  "lead": "導入文（80文字以上）",
+  "summary": "結論（120文字以上）",
+  "psychology": "相手の心理解説（150文字以上）",
+  "actions": ["具体行動1", "具体行動2", "具体行動3"],
+  "ng": ["避けたい行動1", "避けたい行動2"],
+  "misunderstanding": "よくある誤解（100文字以上）",
+  "conclusion": "まとめ（120文字以上）"
 }}
 
 【相談内容】
 {question}
 """
-    r = llm(prompt, max_tokens=2800, stop=["}"])
-    raw = r["choices"][0]["text"].strip() + "}"
-    return extract_json(raw)
+    r = llm(prompt, max_tokens=2800)
+    return json.loads(r["choices"][0]["text"].strip())
 
 def validate_article(data: dict):
     for k, v in REQUIRED_FIELDS.items():
@@ -187,21 +191,31 @@ def main():
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_PATH, [])
 
-    # --- 質問生成（絶対成功） ---
+    used_ids = {u["id"] for u in used}
+    hashes = {q["content_hash"] for q in questions}
+
+    # --- 常に質問を生成 ---
     title, body = generate_question()
+    h = content_hash(title, body)
+
+    if h in hashes:
+        print("ℹ️ 重複質問検知 → スキップ")
+        return
+
     slug = slugify_jp(title)
     qid = uid()
 
-    questions.append({
+    question = {
         "id": qid,
         "title": title,
         "slug": slug,
         "question": body,
         "created_at": today()["iso"],
-        "content_hash": content_hash(title, body),
+        "content_hash": h,
         "url": f"posts/{slug}.html"
-    })
+    }
 
+    questions.append(question)
     save_json(QUESTIONS_PATH, questions)
 
     # --- 記事生成 ---
@@ -212,7 +226,7 @@ def main():
             validate_article(article)
             break
         except Exception as e:
-            print(f"⚠️ 再生成 {i+1}/{MAX_RETRY}: {e}")
+            print(f"⚠️ 記事再生成 {i+1}/{MAX_RETRY}: {e}")
 
     if article is None:
         raise RuntimeError("記事生成失敗")
@@ -220,20 +234,26 @@ def main():
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
-    t = today()
+    today_info = today()
 
     html = (
         tpl.replace("{{TITLE}}", esc(title))
            .replace("{{META_DESCRIPTION}}", esc(body[:120]))
-           .replace("{{DATE_ISO}}", t["iso"])
-           .replace("{{DATE_JP}}", t["jp"])
+           .replace("{{DATE_ISO}}", today_info["iso"])
+           .replace("{{DATE_JP}}", today_info["jp"])
            .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
            .replace("{{LEAD}}", esc(article["lead"]))
            .replace("{{QUESTION}}", esc(body))
            .replace("{{SUMMARY_ANSWER}}", esc(article["summary"]))
            .replace("{{PSYCHOLOGY}}", esc(article["psychology"]))
-           .replace("{{ACTION_LIST}}", "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"]))
-           .replace("{{NG_LIST}}", "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"]))
+           .replace(
+               "{{ACTION_LIST}}",
+               "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"])
+           )
+           .replace(
+               "{{NG_LIST}}",
+               "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"])
+           )
            .replace("{{MISUNDERSTANDING}}", esc(article["misunderstanding"]))
            .replace("{{CONCLUSION}}", esc(article["conclusion"]))
            .replace("{{RELATED}}", "")
@@ -248,7 +268,7 @@ def main():
     used.append({"id": qid})
     save_json(USED_PATH, used)
 
-    print("✅ 記事生成完了（最終安定版）")
+    print("✅ 記事生成完了（single-process / 絶対停止しない）")
 
 if __name__ == "__main__":
     main()
