@@ -10,7 +10,7 @@ from llama_cpp import Llama
 # ===============================
 MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
-MAX_RETRY = 7
+MAX_RETRY = 15
 
 # ===============================
 # ユーティリティ
@@ -136,8 +136,9 @@ def main():
         print("✅ 新しい質問を生成しました")
         return
 
-    print("❌ 質問生成に失敗しました（重複・条件未達）")
-    sys.exit(1)
+    print("⚠️ 質問生成に失敗（重複・条件未達）")
+    return
+
 
 if __name__ == "__main__":
     main()
