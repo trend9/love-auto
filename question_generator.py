@@ -6,50 +6,35 @@ from llama_cpp import Llama
 # =========================
 # 設定
 # =========================
-
 MODEL_PATH = "./models/model.gguf"
+QUESTIONS_PATH = "data/questions.json"
+USED_PATH = "data/used_questions.json"
 
-QUESTIONS_FILE = "data/questions.json"
-USED_QUESTIONS_FILE = "data/used_questions.json"
-
-GENERATE_COUNT = 5
-MAX_TOKENS = 512
-TEMPERATURE = 0.8
+GENERATE_COUNT = 5   # 1回で生成する質問数
+MAX_CONTEXT = 2048   # 安定優先（Mac / Actions 両対応）
 
 # =========================
-# 安全チェック
+# LLM 初期化（安定版）
 # =========================
-
-if not os.path.exists(MODEL_PATH):
-    raise RuntimeError(
-        f"❌ LLMモデルが見つかりません: {MODEL_PATH}\n"
-        f"GitHub Actionsでは model をDLしています。\n"
-        f"ローカルで実行する場合は models/model.gguf を配置してください。"
-    )
-
-# =========================
-# LLM 初期化（完全ローカル）
-# =========================
-
 llm = Llama(
-    model_path="./models/model.gguf",
-    n_ctx=2048,
-    n_threads=4,
-    n_gpu_layers=0,   # ← ここ超重要（Metalを使わない）
+    model_path=MODEL_PATH,
+    n_ctx=MAX_CONTEXT,
+    n_threads=os.cpu_count() or 4,
+    n_gpu_layers=0,        # Actions (CPU) 前提
+    verbose=False
 )
 
 # =========================
 # ユーティリティ
 # =========================
-
-def load_json(path, default):
+def load_json(path):
     if not os.path.exists(path):
-        return default
+        return []
     with open(path, "r", encoding="utf-8") as f:
         try:
             return json.load(f)
         except json.JSONDecodeError:
-            return default
+            return []
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -57,83 +42,114 @@ def save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # =========================
-# 質問生成（SEO無限化）
+# SEO特化プロンプト
 # =========================
+def build_prompt(existing_titles):
+    banned = "\n".join(existing_titles[:50])
 
-def generate_questions(existing_titles: set[str]) -> list[str]:
-    prompt = f"""
-あなたは恋愛相談専門サイトの編集者です。
-
-以下の条件をすべて守って、
-SEOに強い「恋愛相談の質問タイトル」を{GENERATE_COUNT}個生成してください。
+    return f"""
+あなたは「恋愛相談サイト」の編集者です。
+日本人が実際に検索しそうな【恋愛の悩み】を生成してください。
 
 条件：
-・日本語
-・検索されやすい自然な文
-・悩みが具体的に想像できる
-・疑問文で終わる
-・同じ意味の質問は作らない
-・既存タイトルと被らない
+- 日本語
+- 実在の人が検索する文言
+- 1タイトル＝1悩み
+- 恋愛相談に限定（片思い・復縁・不安・LINE・浮気・距離感など）
+- 説明文や前置きは禁止
+- 箇条書き禁止
+- 数字・記号禁止
 
-既存タイトル：
-{list(existing_titles)}
+すでに使われたタイトル（これらは絶対に出さない）：
+{banned}
 
-出力形式：
-・1行に1つ
-・番号や記号は付けない
+出力形式（JSONのみ）：
+[
+  {{
+    "title": "検索されやすい質問タイトル",
+    "question": "その悩みを具体的に書いた相談文（2〜4文）"
+  }}
+]
+
+必ず {GENERATE_COUNT} 個出力してください。
 """
+
+# =========================
+# 質問生成
+# =========================
+def generate_questions(existing_titles):
+    prompt = build_prompt(existing_titles)
 
     result = llm(
         prompt,
-        max_tokens=MAX_TOKENS,
-        temperature=TEMPERATURE
+        max_tokens=800,
+        temperature=0.9,
+        top_p=0.95,
+        repeat_penalty=1.1,
+        stop=["</s>"]
     )
 
-    text = result["choices"][0]["text"]
+    text = result["choices"][0]["text"].strip()
 
-    titles = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line in existing_titles:
-            continue
-        titles.append(line)
+    # JSONだけ抜き出す
+    try:
+        json_start = text.index("[")
+        json_end = text.rindex("]") + 1
+        parsed = json.loads(text[json_start:json_end])
+    except Exception:
+        return []
 
-    return titles
+    cleaned = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if "title" not in item or "question" not in item:
+            continue
+        cleaned.append({
+            "title": item["title"].strip(),
+            "question": item["question"].strip()
+        })
+
+    return cleaned
 
 # =========================
 # メイン処理
 # =========================
-
 def main():
-    questions = load_json(QUESTIONS_FILE, [])
-    used = load_json(USED_QUESTIONS_FILE, [])
+    questions = load_json(QUESTIONS_PATH)
+    used = load_json(USED_PATH)
 
-    existing_titles = {
-        q["title"] for q in questions
-        if isinstance(q, dict) and "title" in q
-    }
+    existing_titles = {q.get("title", "") for q in questions}
+    used_titles = {q.get("title", "") for q in used}
 
-    new_titles = generate_questions(existing_titles)
+    all_existing = list(existing_titles | used_titles)
 
-    if not new_titles:
-        print("⚠ 新しい質問は生成されませんでした")
+    new_items = generate_questions(all_existing)
+
+    if not new_items:
+        print("⚠ 質問を生成できませんでした")
         return
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now()
 
-    for title in new_titles:
-        questions.append({
-            "title": title,
-            "created_at": now
-        })
+    for item in new_items:
+        qid = now.strftime("%Y%m%d_%H%M%S_%f")
 
-    save_json(QUESTIONS_FILE, questions)
+        full = {
+            "id": qid,
+            "title": item["title"],
+            "question": item["question"],
+            "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "url": f"posts/{qid}.html"
+        }
 
-    print(f"✅ 新規質問 {len(new_titles)} 件を追加しました")
+        questions.append(full)
+        used.append({"title": item["title"]})
 
-# =========================
+    save_json(QUESTIONS_PATH, questions)
+    save_json(USED_PATH, used)
+
+    print(f"✅ {len(new_items)} 件のSEO質問を追加しました")
 
 if __name__ == "__main__":
     main()
