@@ -78,8 +78,8 @@ header h1 {
     position: fixed;
     bottom: 0;
     right: 20px;
-    height: 80vh; /* 画面の高さの70%に制限して見切れを防止 */
-    max-height: 800px; /* 大きすぎないように上限を設定 */
+    height: 80vh;
+    max-height: 800px;
     z-index: 2000;
     pointer-events: none;
     display: block;
@@ -93,10 +93,10 @@ header h1 {
     pointer-events: auto;
 }
 
-/* 吹き出し：画像の高さに連動して頭上に配置 */
+/* 吹き出し */
 .yui-bubble {
     position: absolute;
-    bottom: calc(100% + 15px); /* 画像の高さのすぐ上に配置 */
+    bottom: calc(100% + 15px);
     right: 50px;
     background: white;
     padding: 15px 20px;
@@ -106,7 +106,6 @@ header h1 {
     width: 200px;
     border: 2px solid var(--accent-color);
     z-index: 2001;
-    pointer-events: auto;
 }
 
 .yui-bubble::after {
@@ -119,7 +118,7 @@ header h1 {
     border-color: white transparent transparent;
 }
 
-/* --- モバイル用：右下のちびキャラ（yuichibi.png） --- */
+/* --- モバイル用 --- */
 .yui-chibi-fixed {
     position: fixed;
     bottom: 20px;
@@ -134,7 +133,6 @@ header h1 {
     filter: drop-shadow(0 5px 10px rgba(0,0,0,0.2));
 }
 
-/* --- レスポンシブ切り替え --- */
 @media (max-width: 1024px) {
     .yui-pc-fixed { display: none; }
     .yui-chibi-fixed { display: block; }
@@ -144,6 +142,7 @@ header h1 {
     header h1 { font-size: 1.3rem; }
     .yui-chibi-fixed { width: 70px; bottom: 15px; right: 15px; }
 }
+
 .archive-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -160,9 +159,96 @@ header h1 {
 .archive-card:hover {
   transform: translateY(-4px);
 }
+
 .post-nav {
   display: flex;
   justify-content: space-between;
   margin-top: 60px;
   font-size: 14px;
+}
+
+/* =====================================================
+   記事ページ専用（恋愛相談1ページ構成）
+   既存CSSとは完全に分離
+===================================================== */
+
+.article-wrapper {
+    background: var(--white);
+    padding: 40px 30px;
+    border-radius: 24px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.06);
+    border: 1px solid #f3e5f5;
+}
+
+.article-intro {
+    font-size: 1rem;
+    background: #faf5ff;
+    border-left: 5px solid var(--accent-color);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 40px;
+}
+
+.article-intro p {
+    margin: 0;
+}
+
+.article-content h2 {
+    margin-top: 60px;
+    font-size: 1.4rem;
+    color: #8e44ad;
+    padding-left: 12px;
+    border-left: 5px solid var(--accent-color);
+}
+
+.article-content h3 {
+    margin-top: 30px;
+    font-size: 1.1rem;
+    color: #6c3483;
+}
+
+.article-content p {
+    margin-top: 15px;
+    line-height: 1.9;
+}
+
+.article-advice-box {
+    background: #fffafc;
+    border: 1px dashed #e1bee7;
+    padding: 20px;
+    border-radius: 15px;
+    margin: 25px 0;
+}
+
+.article-advice-box strong {
+    color: #8e44ad;
+}
+
+.article-related {
+    margin-top: 80px;
+    padding-top: 30px;
+    border-top: 2px solid #f3e5f5;
+}
+
+.article-related h2 {
+    font-size: 1.2rem;
+    margin-bottom: 20px;
+}
+
+.article-related ul {
+    padding-left: 0;
+    list-style: none;
+}
+
+.article-related li {
+    margin-bottom: 10px;
+}
+
+.article-related a {
+    color: #8e44ad;
+    text-decoration: none;
+}
+
+.article-related a:hover {
+    text-decoration: underline;
 }

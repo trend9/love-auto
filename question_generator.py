@@ -1,4 +1,5 @@
 import json
+<<<<<<< Updated upstream
 import os
 import sys
 import hashlib
@@ -200,6 +201,130 @@ def main():
 
     print("❌ 新規質問生成に失敗（致命的）")
     sys.exit(1)
+=======
+import random
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+
+QUESTIONS_PATH = DATA_DIR / "questions.json"
+USED_PATH = DATA_DIR / "used_questions.json"
+
+MAX_GENERATE = 20   # 1回で増やす最大数
+MIN_STOCK = 30      # これ以下なら自動補充
+
+# =========================
+# SEO用コア要素（5軸）
+# =========================
+
+WHO = [
+    "彼氏が", "彼女が", "好きな人が", "元恋人が",
+    "付き合っている相手が", "気になる人が"
+]
+
+ACTION = [
+    "冷たい", "そっけない", "連絡をくれない", "既読スルーする",
+    "距離を置きたがる", "優しくなった", "急に変わった"
+]
+
+SITUATION = [
+    "最近", "急に", "前はそんなことなかったのに",
+    "付き合ってから", "告白してから", "喧嘩してから"
+]
+
+EMOTION = [
+    "不安", "寂しい", "つらい", "苦しい", "モヤモヤする"
+]
+
+INTENT = [
+    "どうすればいい？",
+    "これって脈なし？",
+    "待つべき？",
+    "別れたほうがいい？",
+    "追いかけるべき？"
+]
+
+# =========================
+# ユーティリティ
+# =========================
+
+def load_json(path, default):
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return default
+
+
+def save_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# =========================
+# タイトル生成
+# =========================
+
+def build_question():
+    who = random.choice(WHO)
+    action = random.choice(ACTION)
+    situation = random.choice(SITUATION)
+    emotion = random.choice(EMOTION)
+    intent = random.choice(INTENT)
+
+    question = f"{situation}、{who}{action}。{emotion}。{intent}"
+
+    title = (
+        f"{who}{action}理由｜"
+        f"{emotion}と感じたときの考え方"
+    )
+
+    return {
+        "title": title,
+        "question": question
+    }
+
+
+# =========================
+# メイン生成ロジック
+# =========================
+
+def main():
+    questions = load_json(QUESTIONS_PATH, [])
+    used = load_json(USED_PATH, [])
+
+    existing_titles = {q["title"] for q in questions}
+    existing_titles |= {q["title"] for q in used if "title" in q}
+
+    # まだ十分あるなら何もしない
+    if len(questions) >= MIN_STOCK:
+        print("✔ 質問ストック十分:", len(questions))
+        return
+
+    new_items = []
+
+    attempts = 0
+    while len(new_items) < MAX_GENERATE and attempts < MAX_GENERATE * 5:
+        q = build_question()
+        attempts += 1
+
+        if q["title"] in existing_titles:
+            continue
+
+        existing_titles.add(q["title"])
+        new_items.append(q)
+
+    if not new_items:
+        print("⚠ 新規質問を生成できませんでした")
+        return
+
+    questions.extend(new_items)
+    save_json(QUESTIONS_PATH, questions)
+
+    print(f"✅ 質問生成完了: +{len(new_items)}件（合計 {len(questions)}）")
+
+>>>>>>> Stashed changes
 
 if __name__ == "__main__":
     main()
