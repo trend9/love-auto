@@ -44,7 +44,7 @@ def save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # =========================
-# slug 生成（SEO要）
+# slug 生成（SEO用）
 # =========================
 def slugify(text):
     text = unicodedata.normalize("NFKC", text)
@@ -138,9 +138,22 @@ def main():
     questions = load_json(QUESTIONS_PATH)
     used = load_json(USED_PATH)
 
+    existing_slugs = set()
+
+    # 🔧 既存データを完全正規化（id / slug / url 保証）
+    for i, q in enumerate(questions):
+        if "id" not in q or not q["id"]:
+            q["id"] = f"legacy_{i}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        if "slug" not in q or not q["slug"]:
+            base = slugify(q.get("title", q["id"]))
+            q["slug"] = unique_slug(base, existing_slugs)
+
+        q["url"] = f"posts/{q['slug']}.html"
+        existing_slugs.add(q["slug"])
+
     existing_titles = {q.get("title", "") for q in questions}
     used_titles = {q.get("title", "") for q in used}
-    existing_slugs = {q.get("slug") for q in questions if q.get("slug")}
 
     new_items = generate_questions(list(existing_titles | used_titles))
 

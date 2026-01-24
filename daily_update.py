@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import uuid
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -51,11 +52,17 @@ def esc(t):
     )
 
 # =========================
-# Normalize
+# Normalize（★ここだけ修正）
 # =========================
-def normalize(q):
+def normalize(q, index):
+    # id が無い・空・壊れている場合は自動生成
+    if "id" not in q or not q["id"]:
+        q["id"] = f"legacy_{index}_{uuid.uuid4().hex[:8]}"
+
+    # slug が無ければ id を使う
     if not q.get("slug"):
         q["slug"] = q["id"]
+
     q["url"] = f"posts/{q['slug']}.html"
     return q
 
@@ -187,8 +194,11 @@ f"""<?xml version="1.0" encoding="UTF-8"?>
 def main():
     subprocess.run(["python3","question_generator.py"],check=True)
 
-    questions=[normalize(q) for q in load_json(QUESTIONS_PATH)]
+    raw_questions = load_json(QUESTIONS_PATH)
+    questions = [normalize(q, i) for i, q in enumerate(raw_questions)]
+
     if not questions:
+        print("⚠ 質問を生成できませんでした")
         return
 
     cur=questions[-1]
