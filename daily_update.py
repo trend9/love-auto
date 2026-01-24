@@ -1,5 +1,6 @@
 import os
 import json
+import subprocess
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -19,7 +20,7 @@ MAX_CONTEXT = 4096
 MAX_RETRY = 3
 
 # =========================
-# LLM（★1回ロード）
+# LLM（1回ロード）
 # =========================
 
 llm = Llama(
@@ -84,8 +85,8 @@ def generate_article(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONを**完全に埋めて**ください。
-JSON以外は出力禁止。
+以下のJSONを**必ず全て埋めて**出力してください。
+JSON以外は禁止。
 
 {{
   "lead": "",
@@ -97,7 +98,7 @@ JSON以外は出力禁止。
   "conclusion": ""
 }}
 
-【相談】
+【相談内容】
 {question}
 """
     r = llm(prompt, max_tokens=2800)
@@ -115,19 +116,30 @@ def validate(d):
                 raise ValueError(k)
 
 # =========================
-# Main
+# Main（★事故防止ロジック）
 # =========================
 
 def main():
+    # ① 質問ロード
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_PATH, [])
-
     used_ids = {u["id"] for u in used}
+
+    # ② 未使用が無ければ質問生成
     unused = [q for q in questions if q["id"] not in used_ids]
 
     if not unused:
-        raise RuntimeError("未使用質問が存在しない（設計違反）")
+        print("ℹ️ 未使用質問なし → 新規質問を生成")
+        subprocess.run(["python", "question_generator.py"], check=True)
 
+        # 再ロード
+        questions = load_json(QUESTIONS_PATH, [])
+        unused = [q for q in questions if q["id"] not in used_ids]
+
+        if not unused:
+            raise RuntimeError("質問生成後も未使用質問が存在しません")
+
+    # ③ 1件消費
     q = unused[0]
     today_info = today()
 
@@ -137,8 +149,8 @@ def main():
             article = generate_article(q["question"])
             validate(article)
             break
-        except:
-            continue
+        except Exception as e:
+            print("⚠️ 再生成:", e)
 
     if article is None:
         raise RuntimeError("記事生成失敗")
@@ -167,7 +179,7 @@ def main():
     used.append({"id": q["id"]})
     save_json(USED_PATH, used)
 
-    print("✅ 記事生成完了")
+    print("✅ 記事生成完了（完全自律運用）")
 
 if __name__ == "__main__":
     main()
