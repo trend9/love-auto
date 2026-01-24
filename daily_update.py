@@ -11,7 +11,7 @@ from llama_cpp import Llama
 MODEL_PATH = "./models/model.gguf"
 POST_DIR = "./posts"
 TEMPLATE_PATH = "./template/article.html"
-QUESTION_POOL_PATH = "./questions/questions.json"
+QUESTION_POOL_PATH = "./data/questions.json"
 
 AUTHOR_NAME = "結姉さん"
 
@@ -146,4 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
