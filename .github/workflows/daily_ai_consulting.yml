@@ -13,21 +13,36 @@ on:
 permissions:
   contents: write
 
+# 多重実行防止（同時起動で壊れない）
+concurrency:
+  group: daily-ai-update
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # ----------------------
+      # 1. Checkout
+      # ----------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ----------------------
+      # 2. Python
+      # ----------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: "pip"
 
+      # ----------------------
+      # 3. Cache pip（高速）
+      # ----------------------
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -36,35 +51,53 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      # ----------------------
+      # 4. Cache LLM model（最重要）
+      # ----------------------
       - name: Cache LLM model
         uses: actions/cache@v4
         with:
           path: models
-          key: ${{ runner.os }}-llm-model-v1
+          key: ${{ runner.os }}-llm-model-q2k-v1
 
+      # ----------------------
+      # 5. Install dependencies
+      # ----------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install llama-cpp-python
 
-      - name: Download Llama model (if not cached)
+      # ----------------------
+      # 6. Download model（未キャッシュ時のみ）
+      # ----------------------
+      - name: Download Llama model
         run: |
           if [ ! -f models/model.gguf ]; then
+            echo "⬇️ Downloading LLM model..."
             mkdir -p models
-            curl -L -o models/model.gguf \
+            curl -L --retry 3 -o models/model.gguf \
             https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
+          else
+            echo "✅ LLM model cache hit"
           fi
 
+      # ----------------------
+      # 7. Run generator
+      # ----------------------
       - name: Run daily update
         run: |
           python daily_update.py
 
+      # ----------------------
+      # 8. Commit & push
+      # ----------------------
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add posts/*.html data/questions.json archive.html index.html data/used_questions.json || true
+          git add posts/*.html data/questions.json data/used_questions.json sitemap.xml || true
           git diff --cached --quiet && exit 0
           git commit -m "Daily update by Yui AI"
           git push origin HEAD:main

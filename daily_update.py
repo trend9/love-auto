@@ -1,16 +1,12 @@
-import json
 import os
-import subprocess
-import uuid
-import urllib.request
+import json
 from datetime import datetime
 from llama_cpp import Llama
 
 # =========================
-# 設定
+# Paths / Settings
 # =========================
 MODEL_PATH = "./models/model.gguf"
-MODEL_URL = "https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf"
 
 QUESTIONS_PATH = "data/questions.json"
 USED_QUESTIONS_PATH = "data/used_questions.json"
@@ -19,27 +15,25 @@ POST_TEMPLATE_PATH = "post_template.html"
 POST_DIR = "posts"
 SITEMAP_PATH = "sitemap.xml"
 
-SITE_URL = "https://example.com"  # 必ず変更
+SITE_URL = "https://example.com"  # 必ず後で変更
 AUTHOR_NAME = "ゆい姉さん"
 GOOGLE_VERIFICATION = "2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4"
 
-# =========================
-# Model download (Actions用)
-# =========================
-def ensure_model():
-    if os.path.exists(MODEL_PATH):
-        return
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+MAX_CONTEXT = 2048
 
 # =========================
-# LLM 初期化
+# Directories
 # =========================
-ensure_model()
+os.makedirs("data", exist_ok=True)
+os.makedirs(POST_DIR, exist_ok=True)
+os.makedirs("models", exist_ok=True)
 
+# =========================
+# LLM Init
+# =========================
 llm = Llama(
     model_path=MODEL_PATH,
-    n_ctx=2048,
+    n_ctx=MAX_CONTEXT,
     n_threads=os.cpu_count() or 4,
     n_gpu_layers=0,
     verbose=False
@@ -51,8 +45,12 @@ llm = Llama(
 def load_json(path, default):
     if not os.path.exists(path):
         return default
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else default
+    except Exception:
+        return default
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -73,31 +71,22 @@ def esc(t):
     )
 
 # =========================
-# Normalize（失敗不可）
-# =========================
-def normalize(q, index):
-    if "id" not in q or not q["id"]:
-        q["id"] = f"q_{index}_{uuid.uuid4().hex}"
-    if "slug" not in q or not q["slug"]:
-        q["slug"] = q["id"]
-    q["url"] = f"posts/{q['slug']}.html"
-    return q
-
-# =========================
-# AI生成
+# HTML Generators
 # =========================
 def generate_article(title, question):
-    prompt = f"""あなたは誠実で実用的な恋愛アドバイザーです。
-以下の質問に対して、具体例を交えた丁寧な記事を書いてください。
+    prompt = f"""
+あなたは誠実で実用的な恋愛アドバイザーです。
+以下の相談に対して、共感→整理→具体的アドバイスの順で丁寧に答えてください。
 
-質問：
+相談：
 {question}
 """
     r = llm(prompt, max_tokens=1800)
     return r["choices"][0]["text"].strip()
 
 def generate_summary(title, content):
-    prompt = f"""以下の記事を120〜160文字で要約してください。
+    prompt = f"""
+以下の記事を120〜160文字で要約してください。
 
 タイトル：
 {title}
@@ -165,6 +154,7 @@ def generate_sitemap(questions):
     xml = "".join(
         f"<url><loc>{SITE_URL}/{q['url']}</loc></url>"
         for q in questions
+        if "url" in q
     )
     save_text(
         SITEMAP_PATH,
@@ -175,23 +165,36 @@ def generate_sitemap(questions):
     )
 
 # =========================
-# Main（失敗不可設計）
+# Main（失敗不可）
 # =========================
 def main():
-    subprocess.run(["python3", "question_generator.py"], check=True)
+    # ① 質問生成（失敗不可設計の question_generator.py）
+    os.system("python question_generator.py")
 
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_QUESTIONS_PATH, [])
 
-    questions = [normalize(q, i) for i, q in enumerate(questions)]
+    # 最終保険：質問が0件なら強制生成
+    if not questions:
+        now = datetime.now().strftime("%Y%m%d%H%M%S")
+        questions = [{
+            "id": f"force_{now}",
+            "title": "恋愛で不安になったときの心の整え方",
+            "slug": f"force-{now}",
+            "question": "相手の気持ちが分からず不安になるとき、どう考えればいいでしょうか。",
+            "url": f"posts/force-{now}.html"
+        }]
 
-    unused = [q for q in questions if q["id"] not in used]
+    # 未使用質問を選ぶ
+    used_ids = {u["id"] for u in used if isinstance(u, dict) and "id" in u}
+    unused = [q for q in questions if q.get("id") not in used_ids]
     if not unused:
         used.clear()
         unused = questions[:]
 
     cur = unused[0]
 
+    # 記事生成
     content = generate_article(cur["title"], cur["question"])
     summary = generate_summary(cur["title"], content)
 
@@ -206,13 +209,15 @@ def main():
            .replace("{{AUTHOR}}", author_schema())
            .replace("{{ARTICLE_SCHEMA}}", article_schema(cur["title"], summary, cur["slug"]))
            .replace("{{FAQ}}", faq_schema(cur["title"], cur["question"]))
-           .replace("{{GOOGLE_VERIFY}}",
-                    f'<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />')
+           .replace(
+               "{{GOOGLE_VERIFY}}",
+               f'<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />'
+           )
     )
 
     save_text(os.path.join(POST_DIR, f"{cur['slug']}.html"), html)
 
-    used.append(cur["id"])
+    used.append({"id": cur["id"]})
     save_json(USED_QUESTIONS_PATH, used)
 
     generate_sitemap(questions)
