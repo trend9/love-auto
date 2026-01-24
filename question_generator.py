@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import hashlib
+import re
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -41,6 +42,36 @@ def now():
 
 def uid():
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+# ===============================
+# slug 正規化（日本語OK・404防止）
+# ===============================
+def safe_slug(title: str) -> str:
+    s = title.strip()
+
+    # 改行・タブなど制御文字除去
+    s = re.sub(r"[\r\n\t]", "", s)
+
+    # URLに致命的な記号を除去（日本語は残す）
+    s = re.sub(r"[\"'`<>|\\^~\[\]{}()（）「」『』【】！？!?,.。・:：;；]", "", s)
+
+    # スラッシュ類除去
+    s = s.replace("/", "").replace("／", "")
+
+    # 空白はハイフンに
+    s = re.sub(r"\s+", "-", s)
+
+    # 連続ハイフン整理
+    s = re.sub(r"-{2,}", "-", s)
+
+    # 前後ハイフン除去
+    s = s.strip("-")
+
+    # 万一空になった場合の保険
+    if not s:
+        s = f"question-{uid()[-6:]}"
+
+    return s
 
 # ===============================
 # LLM 初期化
@@ -118,12 +149,11 @@ def main():
             continue
 
         qid = uid()
-        slug = title.replace(" ", "").replace("　", "")
-        slug = slug.replace("/", "").replace("?", "").replace("？", "")
+        slug = safe_slug(title)
 
         new_q = {
             "id": qid,
-            "title": f"{title}_{qid[-6:]}",
+            "title": title,
             "slug": slug,
             "question": question,
             "created_at": now(),
