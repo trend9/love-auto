@@ -1,219 +1,144 @@
 import json
 import os
-import re
-import unicodedata
+import sys
+import hashlib
 from datetime import datetime
 from llama_cpp import Llama
 
-# =========================
-# Paths / Settings
-# =========================
-MODEL_PATH = "./models/model.gguf"
+# ===============================
+# 設定
+# ===============================
+MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
-USED_PATH = "data/used_questions.json"
+MAX_RETRY = 7
 
-GENERATE_COUNT = 5
-MAX_CONTEXT = 2048
-
-# =========================
-# LLM Init（失敗しても後続で必ず救済）
-# =========================
-llm = Llama(
-    model_path=MODEL_PATH,
-    n_ctx=MAX_CONTEXT,
-    n_threads=os.cpu_count() or 4,
-    n_gpu_layers=0,
-    verbose=False
-)
-
-# =========================
-# JSON Utils（壊れても止まらない）
-# =========================
-def load_json(path):
+# ===============================
+# ユーティリティ
+# ===============================
+def load_json(path, default):
     if not os.path.exists(path):
-        return []
+        return default
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-            return []
+            return json.load(f)
     except Exception:
-        return []
+        return default
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# =========================
-# Slug Utils
-# =========================
-def slugify(text):
-    text = unicodedata.normalize("NFKC", text)
-    text = text.lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_-]+", "-", text)
-    return text.strip("-")
+def normalize_text(text: str) -> str:
+    return "".join(text.split()).lower()
 
-def unique_slug(base, existing):
-    slug = base
-    i = 2
-    while slug in existing:
-        slug = f"{base}-{i}"
-        i += 1
-    return slug
+def content_hash(title: str, question: str) -> str:
+    base = normalize_text(title) + normalize_text(question)
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-# =========================
-# Prompt
-# =========================
-def build_prompt(existing_titles):
-    banned = "\n".join(list(existing_titles)[:50])
-    return f"""
-日本人が検索しそうな恋愛の悩みを作ってください。
+def now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-条件：
-- 日本語
-- 恋愛相談のみ
-- 説明文・箇条書き禁止
-- JSONのみ出力
+def uid():
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-禁止タイトル：
-{banned}
+# ===============================
+# LLM 初期化
+# ===============================
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    temperature=0.9,
+    top_p=0.95,
+    repeat_penalty=1.15,
+    verbose=False,
+)
 
-出力形式：
-[
-  {{
-    "title": "質問タイトル",
-    "question": "相談文"
-  }}
-]
+# ===============================
+# 質問生成（薄くならない）
+# ===============================
+def generate_question():
+    prompt = """
+あなたは「恋愛・人間関係の実体験相談」を生成する専門家です。
 
-{GENERATE_COUNT}件必ず出力。
+【絶対ルール】
+- 抽象論・一般論・テンプレ禁止
+- 具体的な状況（関係性／期間／出来事）を必ず含める
+- 感情の揺れ・葛藤・迷いを必ず1つ以上含める
+- 1問のみ生成
+- 過去に見たことがあるような質問は禁止
+
+【文字量】
+- タイトル：20文字以上
+- 質問本文：120文字以上
+
+【出力形式（厳守）】
+タイトル：〇〇〇〇
+質問：〇〇〇〇
 """
 
-# =========================
-# 最終保険（絶対に1件返す）
-# =========================
-def safe_fallback_questions():
-    now = datetime.now().strftime("%Y%m%d%H%M%S")
-    return [
-        {
-            "title": f"恋人の気持ちが分からなくなったときの向き合い方_{now}",
-            "question": "最近、恋人の態度が以前と違うように感じて不安です。どのように気持ちを整理し、話し合えばいいでしょうか。"
-        }
-    ]
+    result = llm(
+        prompt,
+        max_tokens=700,
+        stop=["\n\n"],
+    )
 
-# =========================
-# Question Generation（失敗不可）
-# =========================
-def generate_questions(existing_titles):
+    text = result["choices"][0]["text"].strip()
+
+    if "タイトル：" not in text or "質問：" not in text:
+        return None
+
     try:
-        result = llm(
-            build_prompt(existing_titles),
-            max_tokens=800,
-            temperature=0.9
-        )
-
-        text = result["choices"][0]["text"]
-
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start == -1 or end <= start:
-            return safe_fallback_questions()
-
-        parsed = json.loads(text[start:end])
-
-        valid = []
-        for q in parsed:
-            if (
-                isinstance(q, dict)
-                and isinstance(q.get("title"), str)
-                and isinstance(q.get("question"), str)
-                and q["title"].strip()
-                and q["question"].strip()
-            ):
-                valid.append(q)
-
-        if valid:
-            return valid
-
-        return safe_fallback_questions()
-
+        title = text.split("タイトル：")[1].split("質問：")[0].strip()
+        question = text.split("質問：")[1].strip()
+        if len(title) < 20 or len(question) < 120:
+            return None
+        return title, question
     except Exception:
-        return safe_fallback_questions()
+        return None
 
-# =========================
-# Main（ここで0件は絶対に起きない）
-# =========================
+# ===============================
+# メイン処理（失敗不可）
+# ===============================
 def main():
-    os.makedirs("data", exist_ok=True)
-    os.makedirs("posts", exist_ok=True)
+    questions = load_json(QUESTIONS_PATH, [])
+    existing_hashes = {
+        q.get("content_hash") for q in questions if "content_hash" in q
+    }
 
-    questions = load_json(QUESTIONS_PATH)
-    used = load_json(USED_PATH)
-
-    if not isinstance(used, list):
-        used = []
-
-    existing_slugs = set()
-    for i, q in enumerate(questions):
-        if not isinstance(q, dict):
+    for _ in range(MAX_RETRY):
+        generated = generate_question()
+        if not generated:
             continue
 
-        if "id" not in q or not q["id"]:
-            q["id"] = f"legacy_{i}"
+        title, question = generated
+        h = content_hash(title, question)
 
-        if "title" not in q or not q["title"]:
-            q["title"] = f"既存質問_{i}"
+        if h in existing_hashes:
+            continue
 
-        if "slug" not in q or not q["slug"]:
-            q["slug"] = slugify(q["title"]) or q["id"]
+        qid = uid()
+        slug = title.replace(" ", "").replace("　", "")
+        slug = slug.replace("/", "").replace("?", "").replace("？", "")
+        slug = f"{slug}-{qid[-6:]}"
 
-        q["url"] = f"posts/{q['slug']}.html"
-        existing_slugs.add(q["slug"])
-
-    existing_titles = {q["title"] for q in questions if isinstance(q, dict)}
-
-    new_items = generate_questions(existing_titles)
-
-    # 念のための最終保険
-    if not new_items:
-        new_items = safe_fallback_questions()
-
-    now = datetime.now()
-
-    for item in new_items:
-        base = slugify(item["title"]) or now.strftime("%Y%m%d%H%M%S")
-        slug = unique_slug(base, existing_slugs)
-        existing_slugs.add(slug)
-
-        questions.append({
-            "id": now.strftime("%Y%m%d_%H%M%S_%f"),
-            "title": item["title"],
+        new_q = {
+            "id": qid,
+            "title": f"{title}_{qid[-6:]}",
             "slug": slug,
-            "question": item["question"],
-            "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "url": f"posts/{slug}.html"
-        })
+            "question": question,
+            "created_at": now(),
+            "content_hash": h,
+            "url": f"posts/{slug}.html",
+        }
 
-        used.append({"title": item["title"]})
+        questions.append(new_q)
+        save_json(QUESTIONS_PATH, questions)
+        print("✅ 新しい質問を生成しました")
+        return
 
-    # 最終保証：questions.json が空なら強制1件
-    if not questions:
-        fallback = safe_fallback_questions()[0]
-        slug = slugify(fallback["title"])
-        questions.append({
-            "id": "force_1",
-            "title": fallback["title"],
-            "slug": slug,
-            "question": fallback["question"],
-            "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "url": f"posts/{slug}.html"
-        })
-
-    save_json(QUESTIONS_PATH, questions)
-    save_json(USED_PATH, used)
+    print("❌ 質問生成に失敗しました（重複・条件未達）")
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()

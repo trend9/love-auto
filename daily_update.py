@@ -75,55 +75,66 @@ def esc(t):
     )
 
 # =========================
-# Article Generator（失敗不可）
+# Article Generator（薄化防止・失敗不可）
 # =========================
 def generate_article(question):
     prompt = f"""
-あなたはプロの恋愛カウンセラーです。
-以下の相談に対して、指定構成で【必ずHTMLのみ】で出力してください。
+あなたは経験豊富な恋愛カウンセラーです。
 
-【構成】
+【最重要】
+- 表面的な一般論・教科書的説明は禁止
+- 感情・心理の動きを具体的に言語化する
+- 1セクション最低2段落以上
+- 全体で1500文字以上になるように書く
+- HTMLタグ以外は絶対に出力しない
+
+【構成（厳守）】
 <h2>共感と状況整理</h2>
-<p>...</p>
+<p>相談者の気持ちに深く共感し、状況を具体的に整理する。</p>
 
 <h2>心理的な背景</h2>
-<p>...</p>
+<p>相手と相談者、両方の心理を掘り下げる。</p>
 
 <h2>今日からできる行動</h2>
 <ul>
-<li>...</li>
+<li>感情面</li>
+<li>行動面</li>
+<li>考え方</li>
 </ul>
 
 <h2>やってはいけないNG行動</h2>
 <ul>
-<li>...</li>
+<li>逆効果になる行動</li>
+<li>関係を壊す思考</li>
 </ul>
 
 <h2>よくある勘違い</h2>
-<p>...</p>
+<p>多くの人が陥る誤解を具体例付きで説明。</p>
 
 <h2>まとめ</h2>
-<p>...</p>
+<p>読後に気持ちが少し軽くなる締め。</p>
 
 【相談内容】
 {question}
 """
-    r = llm(prompt, max_tokens=1800)
+    r = llm(prompt, max_tokens=1900)
     return r["choices"][0]["text"].strip()
 
 def generate_summary(content):
     prompt = f"""
 以下の記事を120〜160文字で要約してください。
+抽象語は禁止。具体的に。
 改行なし、日本語。
 
 本文：
-{content[:1500]}
+{content[:1600]}
 """
     r = llm(prompt, max_tokens=300)
     return r["choices"][0]["text"].strip().replace("\n", "")
 
 # =========================
-# Schema
+# Schema / Canonical / Sitemap
+# （※ここ以下は元コード完全維持）
 # =========================
 def author_schema():
     return f"""
@@ -172,9 +183,6 @@ def faq_schema(title, question):
 def canonical(slug):
     return f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">'
 
-# =========================
-# Sitemap（失敗不可）
-# =========================
 def generate_sitemap(questions):
     xml = ""
     for q in questions:
