@@ -3,84 +3,158 @@
 <head>
   <meta charset="UTF-8">
 
-  <!-- SEO -->
+  <!-- 基本SEO -->
   <title>{{TITLE}}</title>
-  <meta name="description" content="{{META}}">
-  <meta property="og:title" content="{{TITLE}}">
-  <meta property="og:description" content="{{META}}">
-  <meta property="og:type" content="article">
-  <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
-  {{JSON_LD}}
-
-  <!-- Mobile -->
+  <meta name="description" content="{{META_DESCRIPTION}}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- CSS -->
+  <!-- Google Search Console -->
+  <meta name="google-site-verification" content="2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4" />
+
+  <!-- Canonical -->
+  {{CANONICAL}}
+
+  <!-- OGP -->
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{META_DESCRIPTION}}">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="{{PAGE_URL}}">
+  <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{TITLE}}">
+  <meta name="twitter:description" content="{{META_DESCRIPTION}}">
+  <meta name="twitter:image" content="https://trend9.github.io/love-auto/yui.png">
+
+  <!-- 構造化データ：Article -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "{{TITLE}}",
+    "description": "{{META_DESCRIPTION}}",
+    "datePublished": "{{DATE_ISO}}",
+    "dateModified": "{{DATE_ISO}}",
+    "author": {
+      "@type": "Person",
+      "name": "結姉さん"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "恋愛相談AI",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://trend9.github.io/love-auto/yui.png"
+      }
+    },
+    "image": "https://trend9.github.io/love-auto/yui.png",
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "{{PAGE_URL}}"
+    }
+  }
+  </script>
+
+  <!-- FAQ構造化 -->
+  {{FAQ}}
+
   <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
 
-  <!-- 共通ヘッダー（index.htmlと同一） -->
-  <header>
-    <h1>結姉さんの恋愛相談室</h1>
-  </header>
+<main class="post-container">
 
-  <div class="container">
+  <!-- 日付 -->
+  <p class="post-date">更新日：{{DATE_JP}}</p>
 
-    <!-- 記事本体 -->
-    <article class="site-intro">
+  <!-- H1 -->
+  <h1 class="post-title">{{TITLE}}</h1>
 
-      <p class="post-date">更新日：{{DATE}}</p>
+  <!-- 導入（AI要約・強） -->
+  <section class="post-lead">
+    <p>
+      {{LEAD}}
+    </p>
+  </section>
 
-      <h1 class="post-title">{{NAME}}さんからのお便り</h1>
+  <!-- 相談内容 -->
+  <section class="letter-section">
+    <h2 class="section-title">ご相談内容</h2>
+    <p class="post-text" style="white-space: pre-wrap;">
+{{QUESTION}}
+    </p>
+  </section>
 
-      <!-- お便り -->
-      <section class="letter-section">
-        <h2 class="section-title">お便り内容</h2>
-        <p class="post-text" style="white-space: pre-wrap;">
-{{LETTER}}
-        </p>
-      </section>
+  <!-- 結論 -->
+  <section class="answer-section">
+    <h2 class="section-title">結論</h2>
+    <p class="post-text">
+      {{SUMMARY_ANSWER}}
+    </p>
+  </section>
 
-      <!-- 回答 -->
-      <section class="answer-section">
-        <h2 class="section-title">結姉さんからの回答</h2>
-        <p class="post-text" style="white-space: pre-wrap;">
-{{ANSWER}}
-        </p>
-      </section>
+  <!-- 心理 -->
+  <section class="answer-section">
+    <h2 class="section-title">相手の心理を整理します</h2>
+    <p class="post-text">
+      {{PSYCHOLOGY}}
+    </p>
+  </section>
 
-      <!-- 関連記事 -->
-      <section class="related-section">
-        <h2 class="section-title">こんな相談も読まれています</h2>
-        <ul class="related-list">
-{{RELATED}}
-        </ul>
-      </section>
-      <nav class="post-nav">
-        <a href="20260121_135304.html" class="prev">← 前の記事</a>
-        <a href="20260122_034821.html" class="next">次の記事 →</a>
-      </nav>
+  <!-- 行動 -->
+  <section class="answer-section">
+    <h2 class="section-title">今できる具体的な行動</h2>
+    <ul class="advice-list">
+      {{ACTION_LIST}}
+    </ul>
+  </section>
 
-      <!-- 戻る -->
-      <div class="back-area">
-        <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
-      </div>
+  <!-- NG -->
+  <section class="answer-section">
+    <h2 class="section-title">避けたい行動</h2>
+    <ul class="ng-list">
+      {{NG_LIST}}
+    </ul>
+  </section>
 
-    </article>
+  <!-- 勘違い -->
+  <section class="answer-section">
+    <h2 class="section-title">よくある勘違い</h2>
+    <p class="post-text">
+      {{MISUNDERSTANDING}}
+    </p>
+  </section>
+
+  <!-- まとめ -->
+  <section class="answer-section">
+    <h2 class="section-title">まとめ</h2>
+    <p class="post-text">
+      {{CONCLUSION}}
+    </p>
+  </section>
+
+  <!-- 関連 -->
+  <section class="related-section">
+    <h2 class="section-title">関連する相談</h2>
+    <ul class="related-list">
+      {{RELATED}}
+    </ul>
+  </section>
+
+  <!-- 前後 -->
+  <nav class="post-nav">
+    {{PREV}}
+    {{NEXT}}
+  </nav>
+
+  <!-- 戻る -->
+  <div class="back-area">
+    <a href="../index.html" class="back-link">← 相談室トップへ戻る</a>
   </div>
 
-  <!-- PC用 立ち絵 -->
-  <div class="yui-pc-fixed">
-    <div class="yui-bubble">また相談しに来てね</div>
-    <img src="../yui.png" alt="結姉さん">
-  </div>
-
-  <!-- モバイル用 ちびキャラ -->
-  <div class="yui-chibi-fixed">
-    <img src="../yuichibi.png" alt="結姉さん">
-  </div>
+</main>
 
 </body>
 </html>

@@ -14,10 +14,11 @@ MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
 
 MAX_RETRY = 20
-MIN_TITLE_LEN = 20
-MIN_BODY_LEN = 120
+MIN_TITLE_LEN = 22
+MIN_BODY_LEN = 150
 RECENT_GENRE_BLOCK = 3
 SEMANTIC_CHECK_N = 10
+MAX_RELATED = 3
 
 # =========================
 # Utils
@@ -70,28 +71,32 @@ llm = Llama(
 )
 
 # =========================
-# Question Generate
+# Question Generate（SEO特化）
 # =========================
 
 def generate():
     prompt = """
-あなたは「恋愛・人間関係の実体験相談」を1件だけ生成してください。
+あなたは検索エンジン経由で読まれる「実体験の恋愛相談」を1件だけ生成します。
 
-【厳守】
-・抽象論、テンプレ禁止
-・具体的な期間／関係性／出来事を含める
-・感情の葛藤を必ず入れる
-・過去に見たことがある相談は禁止
+【SEO要件】
+・検索されやすい悩み＋状況＋感情を含むタイトル
+・誰の・いつから・何が起きているかを明確に
+・共感される感情の揺れを必ず含める
+
+【禁止】
+・抽象論
+・教科書的表現
+・よくあるテンプレ相談
 
 【文字数】
-・タイトル20文字以上
-・本文120文字以上
+・タイトル：22文字以上
+・本文：150文字以上
 
 【形式】
 タイトル：〇〇〇
 質問：〇〇〇
 """
-    r = llm(prompt, max_tokens=700)
+    r = llm(prompt, max_tokens=900)
     text = r["choices"][0]["text"].strip()
 
     if "タイトル：" not in text or "質問：" not in text:
@@ -105,18 +110,28 @@ def generate():
 
     return title, body
 
+# =========================
+# Genre（SEOクラスタ固定）
+# =========================
+
 def extract_genre(title, body):
     prompt = f"""
-以下の恋愛相談を、最も近いジャンル1語で分類してください。
-説明は禁止。
+以下の恋愛相談を、SEO的に最適なジャンル1語で分類してください。
+必ず下記から選んでください。
 
-例：片思い / 復縁 / 浮気 / 遠距離 / 価値観のズレ
+【選択肢】
+片思い / 復縁 / 倦怠期 / 価値観のズレ / 浮気 / 遠距離 / 別れたい / 依存 / 年の差 / 結婚
 
+【相談】
 タイトル：{title}
 質問：{body}
 """
     r = llm(prompt, max_tokens=20)
     return r["choices"][0]["text"].strip()
+
+# =========================
+# Semantic Duplicate
+# =========================
 
 def semantic_duplicate_check(title, body, past, n):
     recent = past[-n:]
@@ -126,7 +141,7 @@ def semantic_duplicate_check(title, body, past, n):
     titles = "\n".join(f"- {q['title']}" for q in recent)
 
     prompt = f"""
-以下の新しい相談が、過去の相談と意味的に被っているか判定してください。
+以下の新規相談が、過去相談と意味的に重複しているか判定してください。
 
 出力は OK または NG のみ。
 
@@ -139,6 +154,22 @@ def semantic_duplicate_check(title, body, past, n):
 """
     r = llm(prompt, max_tokens=10)
     return r["choices"][0]["text"].strip() == "OK"
+
+# =========================
+# Related Articles
+# =========================
+
+def build_related(questions, genre):
+    same = [q for q in questions if q.get("genre") == genre]
+    same = same[-MAX_RELATED:]
+    return [
+        {
+            "id": q["id"],
+            "title": q["title"],
+            "url": q["url"]
+        }
+        for q in same
+    ]
 
 # =========================
 # Main
@@ -166,6 +197,7 @@ def main():
             continue
 
         slug = slugify_jp(title)
+        related = build_related(questions, genre)
 
         questions.append({
             "id": uid(),
@@ -173,13 +205,14 @@ def main():
             "slug": slug,
             "question": body,
             "genre": genre,
+            "related": related,
             "created_at": now(),
             "content_hash": h,
             "url": f"posts/{slug}.html"
         })
 
         save_json(QUESTIONS_PATH, questions)
-        print("✅ 新規質問生成成功")
+        print("✅ SEO向け新規質問生成成功")
         return
 
     print("❌ 新規質問生成に失敗")
