@@ -13,11 +13,11 @@ from llama_cpp import Llama
 MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
 
-MAX_RETRY = 20
+MAX_RETRY = 8
 MIN_TITLE_LEN = 22
 MIN_BODY_LEN = 150
 RECENT_GENRE_BLOCK = 3
-SEMANTIC_CHECK_N = 10
+SEMANTIC_CHECK_N = 5
 MAX_RELATED = 3
 
 # =========================
