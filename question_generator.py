@@ -6,23 +6,25 @@ import re
 from datetime import datetime
 from llama_cpp import Llama
 
-# ===============================
-# 設定
-# ===============================
 MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
-MAX_RETRY = 15
 
-# ===============================
-# ユーティリティ
-# ===============================
+MAX_RETRY = 20  # ← 失敗しないために多め
+MIN_TITLE_LEN = 20
+MIN_BODY_LEN = 120
+RECENT_GENRE_BLOCK = 3     # 同ジャンル連続防止
+SEMANTIC_CHECK_N = 10      # 意味被りチェック件数
+
+# -------------------------
+# Utils
+# -------------------------
 def load_json(path, default):
     if not os.path.exists(path):
         return default
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return default
 
 def save_json(path, data):
@@ -30,12 +32,11 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def normalize_text(text: str) -> str:
-    return "".join(text.split()).lower()
+def normalize(t):
+    return "".join(t.split()).lower()
 
-def content_hash(title: str, question: str) -> str:
-    base = normalize_text(title) + normalize_text(question)
-    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+def content_hash(title, body):
+    return hashlib.sha256((normalize(title)+normalize(body)).encode()).hexdigest()
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -43,39 +44,16 @@ def now():
 def uid():
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-# ===============================
-# slug 正規化（日本語OK・404防止）
-# ===============================
-def safe_slug(title: str) -> str:
-    s = title.strip()
+def slugify_jp(text):
+    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
+    return text[:60]
 
-    # 改行・タブなど制御文字除去
-    s = re.sub(r"[\r\n\t]", "", s)
+def recent_genres(questions, n):
+    return [q.get("genre") for q in questions[-n:] if "genre" in q]
 
-    # URLに致命的な記号を除去（日本語は残す）
-    s = re.sub(r"[\"'`<>|\\^~\[\]{}()（）「」『』【】！？!?,.。・:：;；]", "", s)
-
-    # スラッシュ類除去
-    s = s.replace("/", "").replace("／", "")
-
-    # 空白はハイフンに
-    s = re.sub(r"\s+", "-", s)
-
-    # 連続ハイフン整理
-    s = re.sub(r"-{2,}", "-", s)
-
-    # 前後ハイフン除去
-    s = s.strip("-")
-
-    # 万一空になった場合の保険
-    if not s:
-        s = f"question-{uid()[-6:]}"
-
-    return s
-
-# ===============================
-# LLM 初期化
-# ===============================
+# -------------------------
+# LLM
+# -------------------------
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=2048,
@@ -85,90 +63,143 @@ llm = Llama(
     verbose=False,
 )
 
-# ===============================
-# 質問生成（薄くならない）
-# ===============================
-def generate_question():
+# -------------------------
+# Step 1: 質問生成
+# -------------------------
+def generate():
     prompt = """
-あなたは「恋愛・人間関係の実体験相談」を生成する専門家です。
+あなたは「恋愛・人間関係の実体験相談」を1件だけ生成してください。
 
-【絶対ルール】
-- 抽象論・一般論・テンプレ禁止
-- 具体的な状況（関係性／期間／出来事）を必ず含める
-- 感情の揺れ・葛藤・迷いを必ず1つ以上含める
-- 1問のみ生成
-- 過去に見たことがあるような質問は禁止
+【厳守】
+・抽象論、テンプレ禁止
+・具体的な期間／関係性／出来事を含める
+・感情の葛藤を必ず入れる
+・過去に見たことがある相談は禁止
 
-【文字量】
-- タイトル：20文字以上
-- 質問本文：120文字以上
+【文字数】
+・タイトル20文字以上
+・本文120文字以上
 
-【出力形式（厳守）】
-タイトル：〇〇〇〇
-質問：〇〇〇〇
+【形式】
+タイトル：〇〇〇
+質問：〇〇〇
 """
-
-    result = llm(
-        prompt,
-        max_tokens=700,
-        stop=["\n\n"],
-    )
-
-    text = result["choices"][0]["text"].strip()
+    r = llm(prompt, max_tokens=700)
+    text = r["choices"][0]["text"].strip()
 
     if "タイトル：" not in text or "質問：" not in text:
         return None
 
-    try:
-        title = text.split("タイトル：")[1].split("質問：")[0].strip()
-        question = text.split("質問：")[1].strip()
-        if len(title) < 20 or len(question) < 120:
-            return None
-        return title, question
-    except Exception:
+    title = text.split("タイトル：")[1].split("質問：")[0].strip()
+    body = text.split("質問：")[1].strip()
+
+    if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
         return None
 
-# ===============================
-# メイン処理（失敗不可）
-# ===============================
+    return title, body
+
+# -------------------------
+# Step 2: ジャンル抽出
+# -------------------------
+def extract_genre(title, body):
+    prompt = f"""
+以下の恋愛相談を、最も近いジャンル1語で分類してください。
+
+【例】
+片思い / 復縁 / 浮気 / 冷却期間 / 遠距離 / 年の差 / 職場恋愛 / 価値観のズレ
+
+【ルール】
+・必ず1語
+・説明禁止
+
+--- 相談 ---
+タイトル：{title}
+質問：{body}
+"""
+    r = llm(prompt, max_tokens=20)
+    return r["choices"][0]["text"].strip()
+
+# -------------------------
+# Step 3: 意味的被りチェック
+# -------------------------
+def semantic_duplicate_check(title, body, past_questions, n):
+    recent = past_questions[-n:]
+    if not recent:
+        return True
+
+    summaries = "\n".join(f"- {q['title']}" for q in recent)
+
+    prompt = f"""
+以下の新しい恋愛相談が、過去の相談と
+「意味的にほぼ同じ内容」かどうかを判定してください。
+
+【基準】
+・状況や悩みの構造が似ていれば NG
+・表現違いでも中身が同じなら NG
+・明確に違えば OK
+
+【出力】
+OK または NG のみ
+
+--- 過去の相談 ---
+{summaries}
+
+--- 新しい相談 ---
+タイトル：{title}
+質問：{body}
+"""
+    r = llm(prompt, max_tokens=10)
+    return r["choices"][0]["text"].strip() == "OK"
+
+# -------------------------
+# Main
+# -------------------------
 def main():
     questions = load_json(QUESTIONS_PATH, [])
-    existing_hashes = {
-        q.get("content_hash") for q in questions if "content_hash" in q
-    }
+    hashes = {q["content_hash"] for q in questions if "content_hash" in q}
 
     for _ in range(MAX_RETRY):
-        generated = generate_question()
-        if not generated:
+        result = generate()
+        if not result:
             continue
 
-        title, question = generated
-        h = content_hash(title, question)
+        title, body = result
+        h = content_hash(title, body)
+        if h in hashes:
+            continue
 
-        if h in existing_hashes:
+        # ジャンル抽出
+        genre = extract_genre(title, body)
+
+        # ジャンル自己分散チェック
+        if genre in recent_genres(questions, RECENT_GENRE_BLOCK):
+            continue
+
+        # 意味的被りチェック
+        if not semantic_duplicate_check(title, body, questions, SEMANTIC_CHECK_N):
             continue
 
         qid = uid()
-        slug = safe_slug(title)
+        slug = slugify_jp(title)
 
         new_q = {
             "id": qid,
             "title": title,
             "slug": slug,
-            "question": question,
+            "question": body,
+            "genre": genre,
             "created_at": now(),
             "content_hash": h,
-            "url": f"posts/{slug}.html",
+            "url": f"posts/{slug}.html"
         }
 
         questions.append(new_q)
         save_json(QUESTIONS_PATH, questions)
-        print("✅ 新しい質問を生成しました")
+        print("✅ 新規質問生成成功")
         return
 
-    print("⚠️ 質問生成に失敗（重複・条件未達）")
-    return
-
+    print("❌ 新規質問生成に失敗（致命的）")
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()

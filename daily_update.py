@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import subprocess
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -76,9 +77,9 @@ def esc(t):
     )
 
 # =========================
-# Article Generator（Q4最適化）
+# Article Generator（下書き）
 # =========================
-def generate_article(question):
+def generate_article_draft(question):
     prompt = f"""
 あなたは経験豊富な恋愛カウンセラーです。
 
@@ -86,39 +87,16 @@ def generate_article(question):
 - 表面的な一般論・教科書的説明は禁止
 - 感情・心理の動きを具体的に言語化する
 - 1セクション最低2段落以上
-- 全体で1500文字以上になるように書く
-- HTMLタグ以外は絶対に出力しない
-
-【深掘りルール（Q4最適化）】
-- 各セクションで「なぜそう感じるのか」を必ず説明する
-- 行動提案には「そうする理由」と「しない場合のリスク」を含める
-- 抽象語を使う場合は、必ず日常の具体例に落とす
+- 全体で1500文字以上
+- HTMLタグ以外は出力しない
 
 【構成（厳守）】
 <h2>共感と状況整理</h2>
-<p>相談者の気持ちに深く共感し、状況を具体的に整理する。</p>
-
 <h2>心理的な背景</h2>
-<p>相手と相談者、両方の心理を掘り下げる。</p>
-
 <h2>今日からできる行動</h2>
-<ul>
-<li>感情面</li>
-<li>行動面</li>
-<li>考え方</li>
-</ul>
-
 <h2>やってはいけないNG行動</h2>
-<ul>
-<li>逆効果になる行動</li>
-<li>関係を壊す思考</li>
-</ul>
-
 <h2>よくある勘違い</h2>
-<p>多くの人が陥る誤解を具体例付きで説明。</p>
-
 <h2>まとめ</h2>
-<p>読後に気持ちが少し軽くなる締め。</p>
 
 【相談内容】
 {question}
@@ -126,11 +104,36 @@ def generate_article(question):
     r = llm(prompt, max_tokens=1900)
     return r["choices"][0]["text"].strip()
 
+# =========================
+# Article Generator（清書）
+# =========================
+def polish_article(draft):
+    prompt = f"""
+以下の記事を、人間が本気で書いた恋愛相談記事として清書してください。
+
+【清書ルール】
+- 冗長な繰り返しは整理
+- 感情の流れを自然に
+- 上から目線・断定口調は禁止
+- 読者が「自分のことだ」と感じる温度感を重視
+
+【厳守】
+- 構成・見出し・HTMLタグは絶対に変えない
+- 内容の水増し・削除は禁止（表現の改善のみ）
+
+【記事】
+{draft}
+"""
+    r = llm(prompt, max_tokens=1800)
+    return r["choices"][0]["text"].strip()
+
+# =========================
+# Summary
+# =========================
 def generate_summary(content):
     prompt = f"""
 以下の記事を120〜160文字で要約してください。
-抽象語は禁止。具体的に。
-改行なし、日本語。
+抽象語は禁止。具体的に。改行なし。
 
 本文：
 {content[:1600]}
@@ -139,7 +142,7 @@ def generate_summary(content):
     return r["choices"][0]["text"].strip().replace("\n", "")
 
 # =========================
-# 内部リンク（関連記事）
+# 内部リンク
 # =========================
 def related_links(questions, current_id, limit=3):
     others = [q for q in questions if q.get("id") != current_id]
@@ -220,23 +223,29 @@ def generate_sitemap(questions):
     )
 
 # =========================
-# Main
+# Main（質問生成失敗＝即失敗）
 # =========================
 def main():
-    os.system("python question_generator.py")
+    result = subprocess.run(
+        ["python", "question_generator.py"],
+        check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError("質問生成に失敗したため処理を中断")
 
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_QUESTIONS_PATH, [])
 
     used_ids = {u["id"] for u in used if "id" in u}
     unused = [q for q in questions if q["id"] not in used_ids]
+
     if not unused:
-        used.clear()
-        unused = questions[:]
+        raise RuntimeError("未使用の質問が存在しない（異常）")
 
     q = unused[0]
 
-    content = generate_article(q["question"])
+    draft = generate_article_draft(q["question"])
+    content = polish_article(draft)
     summary = generate_summary(content)
 
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
