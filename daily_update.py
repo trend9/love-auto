@@ -1,5 +1,6 @@
 import os
 import json
+import random
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -75,7 +76,7 @@ def esc(t):
     )
 
 # =========================
-# Article Generator（薄化防止・失敗不可）
+# Article Generator（Q4最適化）
 # =========================
 def generate_article(question):
     prompt = f"""
@@ -87,6 +88,11 @@ def generate_article(question):
 - 1セクション最低2段落以上
 - 全体で1500文字以上になるように書く
 - HTMLタグ以外は絶対に出力しない
+
+【深掘りルール（Q4最適化）】
+- 各セクションで「なぜそう感じるのか」を必ず説明する
+- 行動提案には「そうする理由」と「しない場合のリスク」を含める
+- 抽象語を使う場合は、必ず日常の具体例に落とす
 
 【構成（厳守）】
 <h2>共感と状況整理</h2>
@@ -133,8 +139,24 @@ def generate_summary(content):
     return r["choices"][0]["text"].strip().replace("\n", "")
 
 # =========================
+# 内部リンク（関連記事）
+# =========================
+def related_links(questions, current_id, limit=3):
+    others = [q for q in questions if q.get("id") != current_id]
+    random.shuffle(others)
+    picks = others[:limit]
+
+    if not picks:
+        return ""
+
+    html = "<h2>関連記事</h2><ul>"
+    for q in picks:
+        html += f'<li><a href="/{q["url"]}">{esc(q["title"])}</a></li>'
+    html += "</ul>"
+    return html
+
+# =========================
 # Schema / Canonical / Sitemap
-# （※ここ以下は元コード完全維持）
 # =========================
 def author_schema():
     return f"""
@@ -198,24 +220,13 @@ def generate_sitemap(questions):
     )
 
 # =========================
-# Main（絶対止まらない）
+# Main
 # =========================
 def main():
     os.system("python question_generator.py")
 
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_QUESTIONS_PATH, [])
-
-    if not questions:
-        now = datetime.now().strftime("%Y%m%d%H%M%S")
-        questions = [{
-            "id": f"force_{now}",
-            "title": "恋愛で不安になったときの心の整え方",
-            "slug": f"force-{now}",
-            "question": "相手の気持ちが分からず不安になるとき、どう考えればいいでしょうか。",
-            "url": f"posts/force-{now}.html"
-        }]
-        save_json(QUESTIONS_PATH, questions)
 
     used_ids = {u["id"] for u in used if "id" in u}
     unused = [q for q in questions if q["id"] not in used_ids]
@@ -231,6 +242,8 @@ def main():
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
+    content_with_links = content + related_links(questions, q["id"])
+
     html = (
         tpl.replace("{{TITLE}}", esc(q["title"]))
            .replace("{{META_DESCRIPTION}}", esc(summary))
@@ -238,7 +251,7 @@ def main():
            .replace("{{CANONICAL}}", canonical(q["slug"]))
            .replace("{{DATE_JP}}", datetime.now().strftime("%Y年%m月%d日"))
            .replace("{{DATE_ISO}}", datetime.now().isoformat())
-           .replace("{{CONTENT}}", content)
+           .replace("{{CONTENT}}", content_with_links)
            .replace("{{AUTHOR_SCHEMA}}", author_schema())
            .replace("{{ARTICLE_SCHEMA}}", article_schema(q["title"], summary, q["slug"]))
            .replace("{{FAQ_SCHEMA}}", faq_schema(q["title"], q["question"]))

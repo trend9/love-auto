@@ -120,7 +120,6 @@ def main():
         qid = uid()
         slug = title.replace(" ", "").replace("　", "")
         slug = slug.replace("/", "").replace("?", "").replace("？", "")
-        slug = f"{slug}-{qid[-6:]}"
 
         new_q = {
             "id": qid,

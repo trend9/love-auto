@@ -13,7 +13,6 @@ on:
 permissions:
   contents: write
 
-# 多重実行防止（同時起動で壊れない）
 concurrency:
   group: daily-ai-update
   cancel-in-progress: true
@@ -32,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       # ----------------------
-      # 2. Cache pip（高速）
+      # 2. Cache pip
       # ----------------------
       - name: Cache pip
         uses: actions/cache@v4
@@ -60,7 +59,7 @@ jobs:
           pip install llama-cpp-python
 
       # ----------------------
-      # 5. Download model（未キャッシュ時のみ）
+      # 5. Download model
       # ----------------------
       - name: Download Llama model
         run: |
@@ -81,7 +80,7 @@ jobs:
           python daily_update.py
 
       # ----------------------
-      # 7. Commit & push
+      # 7. Commit & push（確実版）
       # ----------------------
       - name: Commit and push changes
         run: |
@@ -89,6 +88,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add posts/*.html data/questions.json data/used_questions.json sitemap.xml || true
-          git diff --cached --quiet && exit 0
+
+          if git diff --cached --quiet; then
+            echo "🟡 No changes to commit"
+            exit 0
+          fi
+
           git commit -m "Daily update by Yui AI"
           git push origin HEAD:main
