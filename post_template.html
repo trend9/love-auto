@@ -2,24 +2,32 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="description" content="{{DESCRIPTION}}">
-    {{CANONICAL}}
-    {{GOOGLE_VERIFY}}
-    {{AUTHOR}}
-    {{ARTICLE_SCHEMA}}
-    {{FAQ}}
 
-
+  <!-- 基本SEO -->
   <title>{{TITLE}}</title>
   <meta name="description" content="{{META_DESCRIPTION}}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Google Search Console -->
+  <meta name="google-site-verification" content="2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4" />
+
+  <!-- Canonical -->
+  {{CANONICAL}}
 
   <!-- OGP -->
   <meta property="og:title" content="{{TITLE}}">
   <meta property="og:description" content="{{META_DESCRIPTION}}">
   <meta property="og:type" content="article">
+  <meta property="og:url" content="{{PAGE_URL}}">
   <meta property="og:image" content="https://trend9.github.io/love-auto/yui.png">
 
-  <!-- JSON-LD（表示されない・SEO専用） -->
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{TITLE}}">
+  <meta name="twitter:description" content="{{META_DESCRIPTION}}">
+  <meta name="twitter:image" content="https://trend9.github.io/love-auto/yui.png">
+
+  <!-- 構造化データ：Article -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,9 +35,18 @@
     "headline": "{{TITLE}}",
     "description": "{{META_DESCRIPTION}}",
     "datePublished": "{{DATE_ISO}}",
+    "dateModified": "{{DATE_ISO}}",
     "author": {
       "@type": "Person",
       "name": "結姉さん"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "恋愛相談AI",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://trend9.github.io/love-auto/yui.png"
+      }
     },
     "image": "https://trend9.github.io/love-auto/yui.png",
     "mainEntityOfPage": {
@@ -39,67 +56,70 @@
   }
   </script>
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- FAQ構造化 -->
+  {{FAQ}}
+
   <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
 
-<div class="post-container">
+<main class="post-container">
 
-  <!-- 更新日 -->
+  <!-- 日付 -->
   <p class="post-date">更新日：{{DATE_JP}}</p>
 
-  <!-- タイトル -->
+  <!-- H1 -->
   <h1 class="post-title">{{TITLE}}</h1>
 
-  <!-- 導入文（AI要約されやすい） -->
-  <p class="post-lead">
-    恋愛に悩んだとき、「これって脈あり？」「相手はどう思っているの？」と不安になりますよね。
-    今回は {{KEYWORD}} について、心理面と行動の両方から丁寧に解説します。
-  </p>
+  <!-- 導入（AI要約・強） -->
+  <section class="post-lead">
+    <p>
+      {{LEAD}}
+    </p>
+  </section>
 
   <!-- 相談内容 -->
   <section class="letter-section">
-    <h2 class="section-title">お便り内容</h2>
+    <h2 class="section-title">ご相談内容</h2>
     <p class="post-text" style="white-space: pre-wrap;">
 {{QUESTION}}
     </p>
   </section>
 
-  <!-- 結論ファースト -->
+  <!-- 結論 -->
   <section class="answer-section">
-    <h2 class="section-title">結論からお伝えします</h2>
+    <h2 class="section-title">結論</h2>
     <p class="post-text">
       {{SUMMARY_ANSWER}}
     </p>
   </section>
 
-  <!-- 心理解説 -->
+  <!-- 心理 -->
   <section class="answer-section">
-    <h2 class="section-title">相手の心理として考えられること</h2>
+    <h2 class="section-title">相手の心理を整理します</h2>
     <p class="post-text">
       {{PSYCHOLOGY}}
     </p>
   </section>
 
-  <!-- 行動アドバイス -->
+  <!-- 行動 -->
   <section class="answer-section">
-    <h2 class="section-title">今あなたが取るべき行動</h2>
+    <h2 class="section-title">今できる具体的な行動</h2>
     <ul class="advice-list">
       {{ACTION_LIST}}
     </ul>
   </section>
 
-  <!-- NG行動 -->
+  <!-- NG -->
   <section class="answer-section">
-    <h2 class="section-title">やってはいけない行動</h2>
+    <h2 class="section-title">避けたい行動</h2>
     <ul class="ng-list">
       {{NG_LIST}}
     </ul>
   </section>
 
-  <!-- よくある勘違い -->
+  <!-- 勘違い -->
   <section class="answer-section">
     <h2 class="section-title">よくある勘違い</h2>
     <p class="post-text">
@@ -115,15 +135,15 @@
     </p>
   </section>
 
-  <!-- 関連記事 -->
+  <!-- 関連 -->
   <section class="related-section">
-    <h2 class="section-title">こんな相談も読まれています</h2>
+    <h2 class="section-title">関連する相談</h2>
     <ul class="related-list">
       {{RELATED}}
     </ul>
   </section>
 
-  <!-- 前後ナビ -->
+  <!-- 前後 -->
   <nav class="post-nav">
     {{PREV}}
     {{NEXT}}
@@ -131,10 +151,10 @@
 
   <!-- 戻る -->
   <div class="back-area">
-    <a href="../index.html" class="back-link">← 相談室のトップへ戻る</a>
+    <a href="../index.html" class="back-link">← 相談室トップへ戻る</a>
   </div>
 
-</div>
+</main>
 
 </body>
 </html>

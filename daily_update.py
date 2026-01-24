@@ -15,7 +15,7 @@ POST_TEMPLATE_PATH = "post_template.html"
 POST_DIR = "posts"
 SITEMAP_PATH = "sitemap.xml"
 
-SITE_URL = "https://example.com"  # 必ず後で変更
+SITE_URL = "https://trend9.github.io/love-auto"
 AUTHOR_NAME = "ゆい姉さん"
 GOOGLE_VERIFICATION = "2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4"
 
@@ -75,25 +75,46 @@ def esc(t):
     )
 
 # =========================
-# HTML Generators
+# Article Generator（失敗不可）
 # =========================
-def generate_article(title, question):
+def generate_article(question):
     prompt = f"""
-あなたは誠実で実用的な恋愛アドバイザーです。
-以下の相談に対して、共感→整理→具体的アドバイスの順で丁寧に答えてください。
+あなたはプロの恋愛カウンセラーです。
+以下の相談に対して、指定構成で【必ずHTMLのみ】で出力してください。
 
-相談：
+【構成】
+<h2>共感と状況整理</h2>
+<p>...</p>
+
+<h2>心理的な背景</h2>
+<p>...</p>
+
+<h2>今日からできる行動</h2>
+<ul>
+<li>...</li>
+</ul>
+
+<h2>やってはいけないNG行動</h2>
+<ul>
+<li>...</li>
+</ul>
+
+<h2>よくある勘違い</h2>
+<p>...</p>
+
+<h2>まとめ</h2>
+<p>...</p>
+
+【相談内容】
 {question}
 """
     r = llm(prompt, max_tokens=1800)
     return r["choices"][0]["text"].strip()
 
-def generate_summary(title, content):
+def generate_summary(content):
     prompt = f"""
 以下の記事を120〜160文字で要約してください。
-
-タイトル：
-{title}
+改行なし、日本語。
 
 本文：
 {content[:1500]}
@@ -152,7 +173,7 @@ def canonical(slug):
     return f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">'
 
 # =========================
-# Sitemap
+# Sitemap（失敗不可）
 # =========================
 def generate_sitemap(questions):
     xml = ""
@@ -169,16 +190,14 @@ def generate_sitemap(questions):
     )
 
 # =========================
-# Main（失敗不可）
+# Main（絶対止まらない）
 # =========================
 def main():
-    # ① 質問生成（失敗不可）
     os.system("python question_generator.py")
 
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_QUESTIONS_PATH, [])
 
-    # 最終保険：質問ゼロ対策
     if not questions:
         now = datetime.now().strftime("%Y%m%d%H%M%S")
         questions = [{
@@ -190,43 +209,43 @@ def main():
         }]
         save_json(QUESTIONS_PATH, questions)
 
-    used_ids = {u["id"] for u in used if isinstance(u, dict) and "id" in u}
-    unused = [q for q in questions if q.get("id") not in used_ids]
-
+    used_ids = {u["id"] for u in used if "id" in u}
+    unused = [q for q in questions if q["id"] not in used_ids]
     if not unused:
         used.clear()
         unused = questions[:]
 
-    cur = unused[0]
+    q = unused[0]
 
-    # 記事生成
-    content = generate_article(cur["title"], cur["question"])
-    summary = generate_summary(cur["title"], content)
+    content = generate_article(q["question"])
+    summary = generate_summary(content)
 
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
     html = (
-        tpl.replace("{{TITLE}}", esc(cur["title"]))
-           .replace("{{DESCRIPTION}}", esc(summary))
+        tpl.replace("{{TITLE}}", esc(q["title"]))
+           .replace("{{META_DESCRIPTION}}", esc(summary))
+           .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{q['slug']}.html")
+           .replace("{{CANONICAL}}", canonical(q["slug"]))
+           .replace("{{DATE_JP}}", datetime.now().strftime("%Y年%m月%d日"))
+           .replace("{{DATE_ISO}}", datetime.now().isoformat())
            .replace("{{CONTENT}}", content)
-           .replace("{{CANONICAL}}", canonical(cur["slug"]))
-           .replace("{{AUTHOR}}", author_schema())
-           .replace("{{ARTICLE_SCHEMA}}", article_schema(cur["title"], summary, cur["slug"]))
-           .replace("{{FAQ}}", faq_schema(cur["title"], cur["question"]))
+           .replace("{{AUTHOR_SCHEMA}}", author_schema())
+           .replace("{{ARTICLE_SCHEMA}}", article_schema(q["title"], summary, q["slug"]))
+           .replace("{{FAQ_SCHEMA}}", faq_schema(q["title"], q["question"]))
            .replace(
                "{{GOOGLE_VERIFY}}",
                f'<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />'
            )
     )
 
-    save_text(os.path.join(POST_DIR, f"{cur['slug']}.html"), html)
+    save_text(os.path.join(POST_DIR, f"{q['slug']}.html"), html)
 
-    used.append({"id": cur["id"]})
+    used.append({"id": q["id"]})
     save_json(USED_QUESTIONS_PATH, used)
 
     generate_sitemap(questions)
-
     print("✅ 記事生成 完了")
 
 if __name__ == "__main__":
