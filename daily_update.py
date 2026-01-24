@@ -81,6 +81,9 @@ def normalize(t):
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
 
+def contains_english(text: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", text))
+
 # =========================
 # Question Generate（必ず成功）
 # =========================
@@ -91,10 +94,11 @@ def generate_question():
 恋愛・人間関係の実体験相談を1件生成してください。
 
 【条件】
+・日本語のみ（英語禁止）
 ・具体的な出来事と感情を含める
 ・タイトル20文字以上
 ・本文120文字以上
-・説明文や補足は禁止
+・説明文・注釈・例は禁止
 
 【形式】
 タイトル：〇〇〇
@@ -108,68 +112,79 @@ def generate_question():
 
         title = text.split("タイトル：")[1].split("質問：")[0].strip()
         body = text.split("質問：")[1].strip()
-        body = body.split("【生成】")[0].strip()
 
-        if len(title) >= 20 and len(body) >= 120:
-            return title, body
+        if len(title) < 20 or len(body) < 120:
+            continue
+
+        if contains_english(title + body):
+            continue
+
+        return title, body
 
 # =========================
-# Article Generate（完全耐性）
+# Article Generate（一次生成・多少雑OK）
 # =========================
 
-def extract_json(text: str) -> dict | None:
-    m = re.search(r"\{[\s\S]*\}", text)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group())
-    except:
-        return None
-
-def generate_article(question):
+def generate_article_raw(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONをすべて埋めて出力してください。
+以下のJSONを出力してください。
+多少文章が荒くても構いません。
 
+【JSON】
 {{
-  "lead": "80文字以上",
-  "summary": "120文字以上",
-  "psychology": "150文字以上",
+  "lead": "導入文",
+  "summary": "結論",
+  "psychology": "相手の心理",
   "actions": ["行動1", "行動2", "行動3"],
   "ng": ["NG1", "NG2"],
-  "misunderstanding": "100文字以上",
-  "conclusion": "120文字以上"
+  "misunderstanding": "よくある誤解",
+  "conclusion": "まとめ"
 }}
 
 相談内容：
 {question}
 """
+    r = llm(prompt, max_tokens=2200)
+    return r["choices"][0]["text"].strip()
+
+# =========================
+# Article Rewrite（清書・品質保証）
+# =========================
+
+def rewrite_article_clean(raw_json_text, question):
+    prompt = f"""
+以下はAIが生成した恋愛相談記事JSONです。
+
+【必須ルール】
+・日本語のみ（英語があれば完全削除）
+・注釈、例文、説明文、生成痕跡は全削除
+・意味を変えず自然な日本語に清書
+・SEO向けに読みやすく整理
+・JSON形式厳守
+・各項目は十分な文字量で書き直す
+
+【JSON形式】
+{{
+  "lead": "80文字以上",
+  "summary": "120文字以上",
+  "psychology": "150文字以上",
+  "actions": ["具体行動1", "具体行動2", "具体行動3"],
+  "ng": ["避けたい行動1", "避けたい行動2"],
+  "misunderstanding": "100文字以上",
+  "conclusion": "120文字以上"
+}}
+
+【相談内容】
+{question}
+
+【元JSON】
+{raw_json_text}
+"""
     r = llm(prompt, max_tokens=2600)
-    raw = r["choices"][0]["text"]
-
-    data = extract_json(raw)
-
-    # ---- 最終保険（絶対に落とさない）----
-    if not isinstance(data, dict):
-        data = {}
-
-    data.setdefault("lead", question[:120])
-    data.setdefault("summary", question)
-    data.setdefault("psychology", "相手にも迷いや不安があり、距離感を測りかねている可能性があります。")
-    data.setdefault("actions", [
-        "感情を整理してから落ち着いて話す",
-        "相手の立場を尊重した言葉を選ぶ",
-        "関係を急がず時間を味方につける"
-    ])
-    data.setdefault("ng", [
-        "感情的に結論を急ぐ",
-        "相手の沈黙を悪意だと決めつける"
-    ])
-    data.setdefault("misunderstanding", "相手の態度が変わったからといって、気持ちが完全に離れたとは限りません。")
-    data.setdefault("conclusion", "焦らず自分の気持ちを大切にしながら、少しずつ関係を見直していきましょう。")
-
-    return data
+    text = r["choices"][0]["text"].strip()
+    return json.loads(text)
 
 # =========================
 # Main
@@ -178,11 +193,12 @@ def generate_article(question):
 def main():
     questions = load_json(QUESTIONS_PATH, [])
 
+    # ① 質問生成
     title, body = generate_question()
     slug = slugify_jp(title)
     qid = uid()
 
-    questions.append({
+    question = {
         "id": qid,
         "title": title,
         "slug": slug,
@@ -190,12 +206,16 @@ def main():
         "created_at": today()["iso"],
         "content_hash": content_hash(title, body),
         "url": f"posts/{slug}.html"
-    })
+    }
 
+    questions.append(question)
     save_json(QUESTIONS_PATH, questions)
 
-    article = generate_article(body)
+    # ② 記事生成 → 清書
+    raw_article = generate_article_raw(body)
+    article = rewrite_article_clean(raw_article, body)
 
+    # ③ HTML生成
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -224,7 +244,7 @@ def main():
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
 
-    print("✅ 完全自動・Actions安定版 完了")
+    print("✅ 完全自動・安定生成（清書込み）完了")
 
 if __name__ == "__main__":
     main()
