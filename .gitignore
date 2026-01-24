@@ -2,3 +2,4 @@
 archive.html
 data/questions.json
 data/used_questions.json
+models/*.gguf
