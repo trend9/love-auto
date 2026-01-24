@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import unicodedata
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -10,17 +12,17 @@ MODEL_PATH = "./models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
 USED_PATH = "data/used_questions.json"
 
-GENERATE_COUNT = 5   # 1回で生成する質問数
-MAX_CONTEXT = 2048   # 安定優先（Mac / Actions 両対応）
+GENERATE_COUNT = 5
+MAX_CONTEXT = 2048
 
 # =========================
-# LLM 初期化（安定版）
+# LLM 初期化
 # =========================
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
     n_threads=os.cpu_count() or 4,
-    n_gpu_layers=0,        # Actions (CPU) 前提
+    n_gpu_layers=0,
     verbose=False
 )
 
@@ -42,6 +44,24 @@ def save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # =========================
+# slug 生成（SEO要）
+# =========================
+def slugify(text):
+    text = unicodedata.normalize("NFKC", text)
+    text = text.lower()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    return text.strip("-")
+
+def unique_slug(base, existing_slugs):
+    slug = base
+    i = 2
+    while slug in existing_slugs:
+        slug = f"{base}-{i}"
+        i += 1
+    return slug
+
+# =========================
 # SEO特化プロンプト
 # =========================
 def build_prompt(existing_titles):
@@ -55,7 +75,7 @@ def build_prompt(existing_titles):
 - 日本語
 - 実在の人が検索する文言
 - 1タイトル＝1悩み
-- 恋愛相談に限定（片思い・復縁・不安・LINE・浮気・距離感など）
+- 恋愛相談に限定
 - 説明文や前置きは禁止
 - 箇条書き禁止
 - 数字・記号禁止
@@ -91,7 +111,6 @@ def generate_questions(existing_titles):
 
     text = result["choices"][0]["text"].strip()
 
-    # JSONだけ抜き出す
     try:
         json_start = text.index("[")
         json_end = text.rindex("]") + 1
@@ -121,10 +140,9 @@ def main():
 
     existing_titles = {q.get("title", "") for q in questions}
     used_titles = {q.get("title", "") for q in used}
+    existing_slugs = {q.get("slug") for q in questions if q.get("slug")}
 
-    all_existing = list(existing_titles | used_titles)
-
-    new_items = generate_questions(all_existing)
+    new_items = generate_questions(list(existing_titles | used_titles))
 
     if not new_items:
         print("⚠ 質問を生成できませんでした")
@@ -133,14 +151,19 @@ def main():
     now = datetime.now()
 
     for item in new_items:
+        base_slug = slugify(item["title"])
+        slug = unique_slug(base_slug, existing_slugs)
+        existing_slugs.add(slug)
+
         qid = now.strftime("%Y%m%d_%H%M%S_%f")
 
         full = {
             "id": qid,
             "title": item["title"],
+            "slug": slug,
             "question": item["question"],
             "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "url": f"posts/{qid}.html"
+            "url": f"posts/{slug}.html"
         }
 
         questions.append(full)

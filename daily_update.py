@@ -2,21 +2,23 @@ import json
 import os
 import subprocess
 from datetime import datetime
-from pathlib import Path
 from llama_cpp import Llama
 
 # =========================
-# パス設定
+# 設定
 # =========================
 MODEL_PATH = "./models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
 POST_TEMPLATE_PATH = "post_template.html"
 POST_DIR = "posts"
-ARCHIVE_PATH = "archive.html"
-INDEX_PATH = "index.html"
+SITEMAP_PATH = "sitemap.xml"
+
+SITE_URL = "https://example.com"  # ←必ず自分のドメインに変更
+AUTHOR_NAME = "ゆい姉さん"
+GOOGLE_VERIFICATION = "2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4"
 
 # =========================
-# LLM 初期化（記事生成用）
+# LLM
 # =========================
 llm = Llama(
     model_path=MODEL_PATH,
@@ -27,12 +29,12 @@ llm = Llama(
 )
 
 # =========================
-# ユーティリティ
+# Utils
 # =========================
 def load_json(path):
     if not os.path.exists(path):
         return []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 def save_text(path, text):
@@ -40,144 +42,179 @@ def save_text(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def safe(text):
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def esc(t):
+    return (
+        t.replace("&","&amp;")
+         .replace("<","&lt;")
+         .replace(">","&gt;")
+         .replace('"',"&quot;")
+    )
 
 # =========================
-# 記事生成プロンプト
+# Normalize
 # =========================
-def build_article_prompt(title, question):
+def normalize(q):
+    if not q.get("slug"):
+        q["slug"] = q["id"]
+    q["url"] = f"posts/{q['slug']}.html"
+    return q
+
+# =========================
+# AI short summary
+# =========================
+def generate_summary(title, content):
+    prompt = f"""
+以下の記事内容を、検索結果やAI回答で使える
+120〜160文字の要約にしてください。
+説明的・中立・断定しすぎない表現で。
+
+タイトル：
+{title}
+
+本文：
+{content[:1500]}
+"""
+    r = llm(prompt, max_tokens=300)
+    return r["choices"][0]["text"].strip().replace("\n", "")
+
+# =========================
+# Structured Data
+# =========================
+def author_schema():
     return f"""
-あなたは「ゆい姉さん」という恋愛相談サイトの回答者です。
-以下の相談に対して、誠実で実用的なアドバイス記事を書いてください。
-
-条件：
-- 日本語
-- 上から目線・説教口調は禁止
-- 具体的・現実的なアドバイス
-- 文字数はしっかり（短文禁止）
-- 絵文字・記号は禁止
-- 見出し構成を必ず守る
-
-構成（厳守）：
-
-最初に3〜4行で全体の要点をまとめる（ゆい姉さんの語り）
-
-<h2>今の気持ちを整理しよう</h2>
-感情の整理と状況の言語化
-
-<h2>なぜその悩みが生まれるのか</h2>
-心理的背景・よくあるケース
-
-<h2>ゆい姉さんからの具体的アドバイス</h2>
-
-<h3>まず意識してほしいこと</h3>
-<h3>相手との向き合い方</h3>
-<h3>やってはいけない行動</h3>
-
-<h2>それでも迷ったときの考え方</h2>
-背中を押す締め
-
-相談内容：
-{question}
+<script type="application/ld+json">
+{{
+ "@context":"https://schema.org",
+ "@type":"Person",
+ "name":"{AUTHOR_NAME}",
+ "jobTitle":"恋愛相談アドバイザー",
+ "description":"実体験と相談対応をもとに恋愛の悩みに寄り添う専門家"
+}}
+</script>
 """
 
+def article_schema(title, summary, slug):
+    return f"""
+<script type="application/ld+json">
+{{
+ "@context":"https://schema.org",
+ "@type":"Article",
+ "headline":"{esc(title)}",
+ "description":"{esc(summary)}",
+ "author":{{"@type":"Person","name":"{AUTHOR_NAME}"}},
+ "publisher":{{"@type":"Organization","name":"{AUTHOR_NAME}"}},
+ "mainEntityOfPage":"{SITE_URL}/posts/{slug}.html",
+ "datePublished":"{datetime.now().date()}"
+}}
+</script>
+"""
+
+def faq_schema_multi(title, question):
+    return f"""
+<script type="application/ld+json">
+{{
+ "@context":"https://schema.org",
+ "@type":"FAQPage",
+ "mainEntity":[
+  {{
+   "@type":"Question",
+   "name":"{esc(title)}",
+   "acceptedAnswer":{{"@type":"Answer","text":"{esc(question)}"}}
+  }},
+  {{
+   "@type":"Question",
+   "name":"どう向き合えばいいですか？",
+   "acceptedAnswer":{{"@type":"Answer","text":"自分の気持ちを整理しつつ、相手の立場や状況を尊重する姿勢が大切です。"}}
+  }},
+  {{
+   "@type":"Question",
+   "name":"不安になったときの対処法は？",
+   "acceptedAnswer":{{"@type":"Answer","text":"一人で抱え込まず、信頼できる人や専門家に相談することで気持ちが軽くなることがあります。"}}
+  }}
+ ]
+}}
+</script>
+"""
+
+def canonical(slug):
+    return f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">'
+
 # =========================
-# 記事本文生成
+# Internal links
+# =========================
+def similarity(a, b):
+    return len(set(a)&set(b)) / max(len(set(a)|set(b)),1)
+
+def internal_links(current, questions, limit=5):
+    scored=[]
+    for q in questions:
+        if q["slug"]==current["slug"]:
+            continue
+        s=similarity(current["title"],q["title"])
+        if s>0:
+            scored.append((s,q))
+    scored.sort(reverse=True)
+    return "".join(
+        f'<li><a href="../{q["url"]}">{esc(q["title"])}</a></li>\n'
+        for _,q in scored[:limit]
+    )
+
+# =========================
+# Article generation
 # =========================
 def generate_article(title, question):
-    result = llm(
-        build_article_prompt(title, question),
-        max_tokens=1800,
-        temperature=0.7,
-        top_p=0.9,
-        repeat_penalty=1.1,
-        stop=["</s>"]
-    )
-    return result["choices"][0]["text"].strip()
+    prompt=f"恋愛相談に対して誠実で実用的なアドバイス記事を書いてください。\n{question}"
+    r=llm(prompt,max_tokens=1800)
+    return r["choices"][0]["text"].strip()
 
 # =========================
-# メイン処理
+# Sitemap
+# =========================
+def generate_sitemap(questions):
+    xml="".join(
+        f"<url><loc>{SITE_URL}/{q['url']}</loc></url>"
+        for q in questions
+    )
+    save_text(SITEMAP_PATH,
+f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{xml}
+</urlset>""")
+
+# =========================
+# Main
 # =========================
 def main():
-    # ① 先に質問を補充（Bを実行）
-    subprocess.run(["python3", "question_generator.py"], check=True)
+    subprocess.run(["python3","question_generator.py"],check=True)
 
-    questions = load_json(QUESTIONS_PATH)
+    questions=[normalize(q) for q in load_json(QUESTIONS_PATH)]
     if not questions:
-        print("⚠ 質問が存在しません")
         return
 
-    # ② 最新の未生成質問を取得
-    latest = questions[-1]
+    cur=questions[-1]
+    content=generate_article(cur["title"],cur["question"])
+    summary=generate_summary(cur["title"],content)
 
-    post_id = latest["id"]
-    title = latest["title"]
-    question = latest["question"]
-    url = latest["url"]
+    with open(POST_TEMPLATE_PATH,encoding="utf-8") as f:
+        tpl=f.read()
 
-    # ③ 記事生成
-    article_html = generate_article(title, question)
+    html=(tpl
+        .replace("{{TITLE}}",esc(cur["title"]))
+        .replace("{{DESCRIPTION}}",esc(summary))
+        .replace("{{CONTENT}}",content)
+        .replace("{{RELATED}}",internal_links(cur,questions))
+        .replace("{{CANONICAL}}",canonical(cur["slug"]))
+        .replace("{{AUTHOR}}",author_schema())
+        .replace("{{ARTICLE_SCHEMA}}",article_schema(cur["title"],summary,cur["slug"]))
+        .replace("{{FAQ}}",faq_schema_multi(cur["title"],cur["question"]))
+        .replace("{{GOOGLE_VERIFY}}",
+                 f'<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />')
+    )
 
-    # ④ テンプレ読み込み
-    with open(POST_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        template = f.read()
+    save_text(os.path.join(POST_DIR,f"{cur['slug']}.html"),html)
+    generate_sitemap(questions)
 
-    # ⑤ 前後ナビ生成
-    idx = len(questions) - 1
-    prev_link = ""
-    next_link = ""
+    print("✅ AI要約・Search Console 完全対応生成完了")
 
-    if idx > 0:
-        p = questions[idx - 1]
-        prev_link = f'<a href="../{p["url"]}">← 前の記事</a>'
-
-    if idx < len(questions) - 1:
-        n = questions[idx + 1]
-        next_link = f'<a href="../{n["url"]}">次の記事 →</a>'
-
-    # ⑥ 関連記事（直近3件）
-    related = ""
-    for q in reversed(questions[max(0, idx-3):idx]):
-        related += f'<li><a href="../{q["url"]}">{safe(q["title"])}</a></li>\n'
-
-    # ⑦ HTML 組み立て
-    html = template \
-        .replace("{{TITLE}}", safe(title)) \
-        .replace("{{QUESTION}}", safe(question)) \
-        .replace("{{CONTENT}}", article_html) \
-        .replace("{{PREV}}", prev_link) \
-        .replace("{{NEXT}}", next_link) \
-        .replace("{{RELATED}}", related)
-
-    # ⑧ 保存
-    save_text(os.path.join(POST_DIR, f"{post_id}.html"), html)
-
-    # =========================
-    # archive.html 再生成
-    # =========================
-    archive_items = ""
-    for q in reversed(questions):
-        archive_items += f'<li><a href="{q["url"]}">{safe(q["title"])}</a></li>\n'
-
-    archive_html = f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>相談アーカイブ</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<h1>相談アーカイブ</h1>
-<ul class="archive-list">
-{archive_items}
-</ul>
-</body>
-</html>
-"""
-    save_text(ARCHIVE_PATH, archive_html)
-
-    print("✅ 記事・アーカイブ生成完了")
-
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
