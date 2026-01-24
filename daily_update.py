@@ -18,13 +18,13 @@ SITE_URL = "https://trend9.github.io/love-auto"
 MAX_CONTEXT = 4096
 
 # =========================
-# LLM（1回ロード）
+# LLM（単一プロセス）
 # =========================
 
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
-    temperature=0.7,          # 安定優先
+    temperature=0.7,
     top_p=0.9,
     repeat_penalty=1.1,
     verbose=False,
@@ -81,11 +81,11 @@ def normalize(t):
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
 
-def contains_english(text: str) -> bool:
+def has_english(text):
     return bool(re.search(r"[A-Za-z]", text))
 
 # =========================
-# Question Generate（必ず1件）
+# Question Generate（修正ループ）
 # =========================
 
 def generate_question():
@@ -93,8 +93,8 @@ def generate_question():
 恋愛・人間関係の実体験相談を1件生成してください。
 
 【条件】
-・具体的な出来事と感情を含める
 ・日本語のみ
+・具体的な出来事と感情を含める
 ・タイトル20文字以上
 ・本文120文字以上
 
@@ -102,35 +102,50 @@ def generate_question():
 タイトル：〇〇〇
 質問：〇〇〇
 """
-    r = llm(prompt, max_tokens=700)
-    text = r["choices"][0]["text"].strip()
+    last_text = ""
 
-    if "タイトル：" not in text or "質問：" not in text:
-        raise RuntimeError("質問生成失敗")
+    while True:
+        r = llm(prompt, max_tokens=700)
+        text = r["choices"][0]["text"].strip()
 
-    title = text.split("タイトル：")[1].split("質問：")[0].strip()
-    body = text.split("質問：")[1].strip()
+        last_text = text
 
-    if len(title) < 20 or len(body) < 120:
-        raise RuntimeError("質問文字数不足")
+        if "タイトル：" not in text or "質問：" not in text:
+            prompt = f"形式が間違っています。正しい形式で修正してください。\n{text}"
+            continue
 
-    return title, body
+        title = text.split("タイトル：")[1].split("質問：")[0].strip()
+        body = text.split("質問：")[1].strip()
+
+        errors = []
+        if len(title) < 20:
+            errors.append("タイトルが短すぎます")
+        if len(body) < 120:
+            errors.append("本文が短すぎます")
+        if has_english(text):
+            errors.append("英語が含まれています")
+
+        if not errors:
+            return title, body
+
+        prompt = f"""
+以下の問題点を修正してください。
+{chr(10).join(errors)}
+
+修正対象：
+{last_text}
+"""
 
 # =========================
-# Article Generate（一次）
+# Article Generate（JSON）
 # =========================
 
-def generate_article_raw(question):
-    prompt = f"""
+def generate_article(question):
+    base_prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下のJSONを必ず出力してください。
-JSON以外は禁止。
-
-【重要】
-・日本語で書く
-・英語は使わない
-・構造厳守
+以下のJSONのみを出力してください。
+英語は禁止。
 
 {{
   "lead": "80文字以上",
@@ -145,32 +160,24 @@ JSON以外は禁止。
 相談内容：
 {question}
 """
-    r = llm(prompt, max_tokens=2200)
-    return r["choices"][0]["text"].strip()
+    raw = ""
 
-# =========================
-# 清書LLM（英語除去＋整形のみ）
-# =========================
+    while True:
+        r = llm(base_prompt, max_tokens=2200)
+        raw = r["choices"][0]["text"].strip()
 
-def rewrite_article_clean(raw_json_text):
-    prompt = f"""
-以下のJSONを修正してください。
+        try:
+            data = json.loads(raw)
+        except:
+            base_prompt = f"JSON形式が壊れています。JSONのみで修正してください。\n{raw}"
+            continue
 
-【目的】
-・英語があれば削除
-・不自然な日本語を整えるだけ
-・意味は変えない
-・長文化しない
+        joined = json.dumps(data, ensure_ascii=False)
+        if has_english(joined):
+            base_prompt = f"英語をすべて削除し、日本語として自然に修正してください。\n{joined}"
+            continue
 
-【厳守】
-・JSON形式のみ出力
-・キー構造は変更禁止
-
-【JSON】
-{raw_json_text}
-"""
-    r = llm(prompt, max_tokens=1200)
-    return r["choices"][0]["text"].strip()
+        return data
 
 # =========================
 # Main
@@ -179,35 +186,23 @@ def rewrite_article_clean(raw_json_text):
 def main():
     questions = load_json(QUESTIONS_PATH, [])
 
-    # ① 質問生成
     title, body = generate_question()
     slug = slugify_jp(title)
-    qid = uid()
 
-    question = {
-        "id": qid,
+    questions.append({
+        "id": uid(),
         "title": title,
         "slug": slug,
         "question": body,
         "created_at": today()["iso"],
         "content_hash": content_hash(title, body),
         "url": f"posts/{slug}.html"
-    }
+    })
 
-    questions.append(question)
     save_json(QUESTIONS_PATH, questions)
 
-    # ② 記事生成（一次）
-    raw_article = generate_article_raw(body)
+    article = generate_article(body)
 
-    # ③ 英語が含まれていたら清書
-    if contains_english(raw_article):
-        clean_text = rewrite_article_clean(raw_article)
-        article = json.loads(clean_text)
-    else:
-        article = json.loads(raw_article)
-
-    # ④ HTML生成
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -235,8 +230,7 @@ def main():
     )
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
-
-    print("✅ 完全自動・安定生成（清書軽量版）完了")
+    print("✅ フォールバック無し・完全自動生成 完了")
 
 if __name__ == "__main__":
     main()
