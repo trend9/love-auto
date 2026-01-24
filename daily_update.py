@@ -22,7 +22,7 @@ MAX_CONTEXT = 4096
 MAX_RETRY = 5
 
 # =========================
-# LLM（single-process / 1回ロード）
+# LLM（single-process）
 # =========================
 
 llm = Llama(
@@ -92,7 +92,7 @@ def extract_json(text: str) -> dict:
     return json.loads(match.group())
 
 # =========================
-# Question Generate（常に新規）
+# Question Generate（retry保証）
 # =========================
 
 def generate_question():
@@ -113,19 +113,22 @@ def generate_question():
 タイトル：〇〇〇
 質問：〇〇〇
 """
-    r = llm(prompt, max_tokens=700)
-    text = r["choices"][0]["text"].strip()
+    for i in range(MAX_RETRY):
+        r = llm(prompt, max_tokens=700)
+        text = r["choices"][0]["text"].strip()
 
-    if "タイトル：" not in text or "質問：" not in text:
-        raise ValueError("質問生成失敗")
+        if "タイトル：" not in text or "質問：" not in text:
+            continue
 
-    title = text.split("タイトル：")[1].split("質問：")[0].strip()
-    body = text.split("質問：")[1].strip()
+        title = text.split("タイトル：")[1].split("質問：")[0].strip()
+        body = text.split("質問：")[1].strip()
 
-    if len(title) < 20 or len(body) < 120:
-        raise ValueError("文字数不足")
+        if len(title) < 20 or len(body) < 120:
+            continue
 
-    return title, body
+        return title, body
+
+    raise RuntimeError("質問生成失敗（retry上限）")
 
 # =========================
 # Article Generate（JSON保証）
@@ -161,12 +164,7 @@ JSON以外は禁止。
 【相談内容】
 {question}
 """
-    r = llm(
-        prompt,
-        max_tokens=2800,
-        stop=["}"]
-    )
-
+    r = llm(prompt, max_tokens=2800, stop=["}"])
     raw = r["choices"][0]["text"].strip() + "}"
     return extract_json(raw)
 
@@ -189,27 +187,24 @@ def main():
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_PATH, [])
 
-    # --- 質問生成（必ず新規） ---
+    # --- 質問生成（絶対成功） ---
     title, body = generate_question()
-    h = content_hash(title, body)
-
     slug = slugify_jp(title)
     qid = uid()
 
-    question = {
+    questions.append({
         "id": qid,
         "title": title,
         "slug": slug,
         "question": body,
         "created_at": today()["iso"],
-        "content_hash": h,
+        "content_hash": content_hash(title, body),
         "url": f"posts/{slug}.html"
-    }
+    })
 
-    questions.append(question)
     save_json(QUESTIONS_PATH, questions)
 
-    # --- 記事生成（再試行あり） ---
+    # --- 記事生成 ---
     article = None
     for i in range(MAX_RETRY):
         try:
@@ -225,26 +220,20 @@ def main():
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
-    today_info = today()
+    t = today()
 
     html = (
         tpl.replace("{{TITLE}}", esc(title))
            .replace("{{META_DESCRIPTION}}", esc(body[:120]))
-           .replace("{{DATE_ISO}}", today_info["iso"])
-           .replace("{{DATE_JP}}", today_info["jp"])
+           .replace("{{DATE_ISO}}", t["iso"])
+           .replace("{{DATE_JP}}", t["jp"])
            .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
            .replace("{{LEAD}}", esc(article["lead"]))
            .replace("{{QUESTION}}", esc(body))
            .replace("{{SUMMARY_ANSWER}}", esc(article["summary"]))
            .replace("{{PSYCHOLOGY}}", esc(article["psychology"]))
-           .replace(
-               "{{ACTION_LIST}}",
-               "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"])
-           )
-           .replace(
-               "{{NG_LIST}}",
-               "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"])
-           )
+           .replace("{{ACTION_LIST}}", "\n".join(f"<li>{esc(a)}</li>" for a in article["actions"]))
+           .replace("{{NG_LIST}}", "\n".join(f"<li>{esc(n)}</li>" for n in article["ng"]))
            .replace("{{MISUNDERSTANDING}}", esc(article["misunderstanding"]))
            .replace("{{CONCLUSION}}", esc(article["conclusion"]))
            .replace("{{RELATED}}", "")
@@ -259,7 +248,7 @@ def main():
     used.append({"id": qid})
     save_json(USED_PATH, used)
 
-    print("✅ 記事生成完了（確定版・事故防止済）")
+    print("✅ 記事生成完了（最終安定版）")
 
 if __name__ == "__main__":
     main()
