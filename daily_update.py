@@ -1,7 +1,5 @@
 import os
 import json
-import re
-import hashlib
 from datetime import datetime
 from llama_cpp import Llama
 
@@ -19,7 +17,7 @@ POST_DIR = "posts"
 SITE_URL = "https://trend9.github.io/love-auto"
 
 MAX_CONTEXT = 4096
-MAX_RETRY = 5 
+MAX_RETRY = 5
 
 # =========================
 # LLM（★1回だけロード）
@@ -44,7 +42,7 @@ def load_json(path, default):
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return default
 
 def save_json(path, data):
@@ -71,55 +69,6 @@ def today():
         "iso": now.isoformat(),
         "jp": now.strftime("%Y年%m月%d日")
     }
-
-def uid():
-    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
-def slugify_jp(text):
-    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
-    return text[:60]
-
-def normalize(t):
-    return "".join(t.split()).lower()
-
-def content_hash(title, body):
-    return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
-
-# =========================
-# Question Generate（統合）
-# =========================
-
-def generate_question():
-    prompt = """
-あなたは「恋愛・人間関係の実体験相談」を1件だけ生成してください。
-
-【厳守】
-・抽象論、テンプレ禁止
-・具体的な期間／関係性／出来事を含める
-・感情の葛藤を必ず入れる
-・過去に見たことがある相談は禁止
-
-【文字数】
-・タイトル20文字以上
-・本文120文字以上
-
-【形式】
-タイトル：〇〇〇
-質問：〇〇〇
-"""
-    r = llm(prompt, max_tokens=700)
-    text = r["choices"][0]["text"].strip()
-
-    if "タイトル：" not in text or "質問：" not in text:
-        raise ValueError("質問生成失敗")
-
-    title = text.split("タイトル：")[1].split("質問：")[0].strip()
-    body = text.split("質問：")[1].strip()
-
-    if len(title) < 20 or len(body) < 120:
-        raise ValueError("文字数不足")
-
-    return title, body
 
 # =========================
 # Article Generate（JSON保証）
@@ -176,56 +125,51 @@ def validate_article(data: dict):
                 raise ValueError(f"{k} 要素不足")
 
 # =========================
-# Main
+# Main（質問生成ゼロ）
 # =========================
 
 def main():
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_PATH, [])
 
+    if not questions:
+        raise RuntimeError("questions.json が空です")
+
     used_ids = {u["id"] for u in used}
-    hashes = {q["content_hash"] for q in questions}
+    unused = [q for q in questions if q["id"] not in used_ids]
 
-    # --- 質問生成 ---
-    title, body = generate_question()
-    h = content_hash(title, body)
+    if not unused:
+        raise RuntimeError("未使用の質問がありません")
 
-    if h in hashes:
-        raise RuntimeError("重複質問")
-
-    slug = slugify_jp(title)
-    qid = uid()
-
-    question = {
-        "id": qid,
-        "title": title,
-        "slug": slug,
-        "question": body,
-        "created_at": today()["iso"],
-        "content_hash": h,
-        "url": f"posts/{slug}.html"
-    }
-
-    questions.append(question)
-    save_json(QUESTIONS_PATH, questions)
+    # ★ 未使用質問を1件取得
+    q = unused[0]
+    today_info = today()
 
     # --- 記事生成 ---
-    article = generate_article_struct(body)
-    validate_article(article)
+    article = None
+    for i in range(MAX_RETRY):
+        try:
+            article = generate_article_struct(q["question"])
+            validate_article(article)
+            break
+        except Exception as e:
+            print(f"⚠️ 再生成 {i+1}/{MAX_RETRY}: {e}")
 
+    if article is None:
+        raise RuntimeError("記事生成に失敗しました")
+
+    # --- HTML生成 ---
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
-    today_info = today()
-
     html = (
-        tpl.replace("{{TITLE}}", esc(title))
-           .replace("{{META_DESCRIPTION}}", esc(body[:120]))
+        tpl.replace("{{TITLE}}", esc(q["title"]))
+           .replace("{{META_DESCRIPTION}}", esc(q["question"][:120]))
            .replace("{{DATE_ISO}}", today_info["iso"])
            .replace("{{DATE_JP}}", today_info["jp"])
-           .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
+           .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{q['slug']}.html")
            .replace("{{LEAD}}", esc(article["lead"]))
-           .replace("{{QUESTION}}", esc(body))
+           .replace("{{QUESTION}}", esc(q["question"]))
            .replace("{{SUMMARY_ANSWER}}", esc(article["summary"]))
            .replace("{{PSYCHOLOGY}}", esc(article["psychology"]))
            .replace(
@@ -245,12 +189,13 @@ def main():
            .replace("{{FAQ}}", "")
     )
 
-    save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
+    save_text(os.path.join(POST_DIR, f"{q['slug']}.html"), html)
 
-    used.append({"id": qid})
+    # --- 使用済み記録 ---
+    used.append({"id": q["id"]})
     save_json(USED_PATH, used)
 
-    print("✅ 記事生成完了（single-process / LLM1回）")
+    print("✅ 記事生成完了（質問生成ゼロ・完全分離）")
 
 if __name__ == "__main__":
     main()
