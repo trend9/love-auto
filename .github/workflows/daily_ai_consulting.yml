@@ -18,49 +18,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------
-      # 1. リポジトリ取得
-      # ----------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ----------------------
-      # 2. Python セットアップ
-      # ----------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      # ----------------------
-      # 3. 依存関係インストール（★重要）
-      # ----------------------
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Cache LLM model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: ${{ runner.os }}-llm-model-v1
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install llama-cpp-python
 
-      # ----------------------
-      # 4. Llama-3 モデル取得（★必須）
-      # ----------------------
-      - name: Download Llama model
+      - name: Download Llama model (if not cached)
         run: |
-          mkdir -p models
-          curl -L -o models/model.gguf \
-          https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
+          if [ ! -f models/model.gguf ]; then
+            mkdir -p models
+            curl -L -o models/model.gguf \
+            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q2_K.gguf
+          fi
 
-      # ----------------------
-      # 5. 記事・質問 自動生成
-      # ----------------------
       - name: Run daily update
         run: |
           python daily_update.py
 
-      # ----------------------
-      # 6. コミット & プッシュ
-      # ----------------------
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
