@@ -53,12 +53,16 @@ def load_json(path, default):
         return default
 
 def save_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def save_text(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -151,11 +155,11 @@ def canonical(slug):
 # Sitemap
 # =========================
 def generate_sitemap(questions):
-    xml = "".join(
-        f"<url><loc>{SITE_URL}/{q['url']}</loc></url>"
-        for q in questions
-        if "url" in q
-    )
+    xml = ""
+    for q in questions:
+        if "url" in q:
+            xml += f"<url><loc>{SITE_URL}/{q['url']}</loc></url>\n"
+
     save_text(
         SITEMAP_PATH,
         f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -168,13 +172,13 @@ def generate_sitemap(questions):
 # Main（失敗不可）
 # =========================
 def main():
-    # ① 質問生成（失敗不可設計の question_generator.py）
+    # ① 質問生成（失敗不可）
     os.system("python question_generator.py")
 
     questions = load_json(QUESTIONS_PATH, [])
     used = load_json(USED_QUESTIONS_PATH, [])
 
-    # 最終保険：質問が0件なら強制生成
+    # 最終保険：質問ゼロ対策
     if not questions:
         now = datetime.now().strftime("%Y%m%d%H%M%S")
         questions = [{
@@ -184,10 +188,11 @@ def main():
             "question": "相手の気持ちが分からず不安になるとき、どう考えればいいでしょうか。",
             "url": f"posts/force-{now}.html"
         }]
+        save_json(QUESTIONS_PATH, questions)
 
-    # 未使用質問を選ぶ
     used_ids = {u["id"] for u in used if isinstance(u, dict) and "id" in u}
     unused = [q for q in questions if q.get("id") not in used_ids]
+
     if not unused:
         used.clear()
         unused = questions[:]
