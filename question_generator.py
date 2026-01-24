@@ -6,18 +6,23 @@ import re
 from datetime import datetime
 from llama_cpp import Llama
 
+# =========================
+# Paths
+# =========================
+
 MODEL_PATH = "models/model.gguf"
 QUESTIONS_PATH = "data/questions.json"
 
 MAX_RETRY = 20
 MIN_TITLE_LEN = 20
 MIN_BODY_LEN = 120
-RECENT_GENRE_BLOCK = 3     # 同ジャンル連続防止
-SEMANTIC_CHECK_N = 10      # 意味被りチェック件数
+RECENT_GENRE_BLOCK = 3
+SEMANTIC_CHECK_N = 10
 
-# -------------------------
+# =========================
 # Utils
-# -------------------------
+# =========================
+
 def load_json(path, default):
     if not os.path.exists(path):
         return default
@@ -51,9 +56,10 @@ def slugify_jp(text):
 def recent_genres(questions, n):
     return [q.get("genre") for q in questions[-n:] if "genre" in q]
 
-# -------------------------
+# =========================
 # LLM
-# -------------------------
+# =========================
+
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=2048,
@@ -63,9 +69,10 @@ llm = Llama(
     verbose=False,
 )
 
-# -------------------------
-# Step 1: 質問生成
-# -------------------------
+# =========================
+# Question Generate
+# =========================
+
 def generate():
     prompt = """
 あなたは「恋愛・人間関係の実体験相談」を1件だけ生成してください。
@@ -98,62 +105,45 @@ def generate():
 
     return title, body
 
-# -------------------------
-# Step 2: ジャンル抽出
-# -------------------------
 def extract_genre(title, body):
     prompt = f"""
 以下の恋愛相談を、最も近いジャンル1語で分類してください。
+説明は禁止。
 
-【例】
-片思い / 復縁 / 浮気 / 冷却期間 / 遠距離 / 年の差 / 職場恋愛 / 価値観のズレ
+例：片思い / 復縁 / 浮気 / 遠距離 / 価値観のズレ
 
-【ルール】
-・必ず1語
-・説明禁止
-
---- 相談 ---
 タイトル：{title}
 質問：{body}
 """
     r = llm(prompt, max_tokens=20)
     return r["choices"][0]["text"].strip()
 
-# -------------------------
-# Step 3: 意味的被りチェック
-# -------------------------
-def semantic_duplicate_check(title, body, past_questions, n):
-    recent = past_questions[-n:]
+def semantic_duplicate_check(title, body, past, n):
+    recent = past[-n:]
     if not recent:
         return True
 
-    summaries = "\n".join(f"- {q['title']}" for q in recent)
+    titles = "\n".join(f"- {q['title']}" for q in recent)
 
     prompt = f"""
-以下の新しい恋愛相談が、過去の相談と
-「意味的にほぼ同じ内容」かどうかを判定してください。
+以下の新しい相談が、過去の相談と意味的に被っているか判定してください。
 
-【基準】
-・状況や悩みの構造が似ていれば NG
-・表現違いでも中身が同じなら NG
-・明確に違えば OK
+出力は OK または NG のみ。
 
-【出力】
-OK または NG のみ
+--- 過去 ---
+{titles}
 
---- 過去の相談 ---
-{summaries}
-
---- 新しい相談 ---
+--- 新規 ---
 タイトル：{title}
 質問：{body}
 """
     r = llm(prompt, max_tokens=10)
     return r["choices"][0]["text"].strip() == "OK"
 
-# -------------------------
+# =========================
 # Main
-# -------------------------
+# =========================
+
 def main():
     questions = load_json(QUESTIONS_PATH, [])
     hashes = {q["content_hash"] for q in questions if "content_hash" in q}
@@ -169,7 +159,6 @@ def main():
             continue
 
         genre = extract_genre(title, body)
-
         if genre in recent_genres(questions, RECENT_GENRE_BLOCK):
             continue
 
@@ -178,7 +167,7 @@ def main():
 
         slug = slugify_jp(title)
 
-        new_q = {
+        questions.append({
             "id": uid(),
             "title": title,
             "slug": slug,
@@ -187,14 +176,13 @@ def main():
             "created_at": now(),
             "content_hash": h,
             "url": f"posts/{slug}.html"
-        }
+        })
 
-        questions.append(new_q)
         save_json(QUESTIONS_PATH, questions)
         print("✅ 新規質問生成成功")
         return
 
-    print("❌ 新規質問生成に失敗（致命的）")
+    print("❌ 新規質問生成に失敗")
     sys.exit(1)
 
 if __name__ == "__main__":

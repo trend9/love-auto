@@ -1,148 +1,153 @@
 import os
 import json
 import random
+import subprocess
 from datetime import datetime
 from llama_cpp import Llama
 
 # =========================
-# 基本設定（※ここだけ環境依存）
+# Paths
 # =========================
 
 MODEL_PATH = "./models/model.gguf"
-POST_DIR = "./posts"
-TEMPLATE_PATH = "./template/article.html"
-QUESTION_POOL_PATH = "./data/questions.json"
+QUESTIONS_PATH = "data/questions.json"
+USED_PATH = "data/used_questions.json"
 
-AUTHOR_NAME = "結姉さん"
+POST_TEMPLATE_PATH = "post_template.html"
+POST_DIR = "posts"
+SITE_URL = "https://trend9.github.io/love-auto"
+
+MAX_CONTEXT = 4096
 
 # =========================
-# LLM 初期化
+# LLM
 # =========================
 
 llm = Llama(
     model_path=MODEL_PATH,
-    n_ctx=4096,
+    n_ctx=MAX_CONTEXT,
     temperature=0.85,
     top_p=0.9,
+    verbose=False,
 )
 
 # =========================
-# ユーティリティ
+# Utils
 # =========================
 
-def load_questions():
-    with open(QUESTION_POOL_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+def load_json(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return default
 
-def load_template():
-    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        return f.read()
+def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def save_text(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+def esc(t):
+    return (
+        t.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+         .replace('"', "&quot;")
+    )
 
 def today():
     now = datetime.now()
     return {
-        "iso": now.strftime("%Y-%m-%d"),
-        "jp": now.strftime("%Y年%m月%d日"),
-        "slug": now.strftime("%Y%m%d"),
+        "iso": now.isoformat(),
+        "jp": now.strftime("%Y年%m月%d日")
     }
 
 # =========================
-# LLM生成
+# Article Generate
 # =========================
 
-def llm_generate(prompt):
-    result = llm(
-        prompt,
-        max_tokens=2048,
-        stop=["</html>"]
-    )
-    return result["choices"][0]["text"].strip()
-
-def generate_article(question_text):
+def generate_article(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
-以下の相談内容をもとに、
-SEOを意識しつつ、人間味があり、共感が強く、
-h2・h3構造が自然に含まれた長文記事を書いてください。
+SEOを意識しつつ、
+人間味があり、共感が強く、
+h2・h3構造が自然な長文記事を書いてください。
 
-【絶対条件】
+【条件】
 ・説教しない
-・感情を肯定する
-・断定しすぎない
-・現実的な行動を提示
-・検索ユーザーが「これ知りたかった」と感じる構成
+・断定しない
+・感情を言語化
+・具体例を多く
+・HTMLタグ以外は出力しない
 
 【相談内容】
-{question_text}
-
-【出力項目】
-- タイトル
-- メタディスクリプション
-- 導入文
-- 結論
-- 相手の心理
-- 今できる具体的な行動（箇条書き）
-- 避けたい行動（箇条書き）
-- よくある勘違い
-- まとめ
+{question}
 """
-    return llm_generate(prompt)
+    r = llm(prompt, max_tokens=3000)
+    return r["choices"][0]["text"].strip()
 
 # =========================
-# HTML埋め込み
-# =========================
-
-def build_html(template, article_data, question_text):
-    today_info = today()
-
-    html = template
-    html = html.replace("{{TITLE}}", article_data["title"])
-    html = html.replace("{{META_DESCRIPTION}}", article_data["meta_description"])
-    html = html.replace("{{DATE_ISO}}", today_info["iso"])
-    html = html.replace("{{DATE_JP}}", today_info["jp"])
-    html = html.replace("{{PAGE_URL}}", f"https://example.com/posts/{today_info['slug']}.html")
-    html = html.replace("{{LEAD}}", article_data["lead"])
-    html = html.replace("{{QUESTION}}", question_text)
-    html = html.replace("{{SUMMARY_ANSWER}}", article_data["summary"])
-    html = html.replace("{{PSYCHOLOGY}}", article_data["psychology"])
-    html = html.replace("{{ACTION_LIST}}", article_data["actions"])
-    html = html.replace("{{NG_LIST}}", article_data["ng"])
-    html = html.replace("{{MISUNDERSTANDING}}", article_data["misunderstanding"])
-    html = html.replace("{{CONCLUSION}}", article_data["conclusion"])
-    html = html.replace("{{RELATED}}", "")
-    html = html.replace("{{PREV}}", "")
-    html = html.replace("{{NEXT}}", "")
-    html = html.replace("{{CANONICAL}}", "")
-    html = html.replace("{{FAQ}}", "")
-
-    return html
-
-# =========================
-# メイン処理
+# Main
 # =========================
 
 def main():
-    os.makedirs(POST_DIR, exist_ok=True)
+    # 質問生成
+    subprocess.run(["python", "question_generator.py"], check=False)
 
-    questions = load_questions()
-    question = random.choice(questions)
+    questions = load_json(QUESTIONS_PATH, [])
+    used = load_json(USED_PATH, [])
 
-    raw_article = generate_article(question)
+    used_ids = {u["id"] for u in used}
+    unused = [q for q in questions if q["id"] not in used_ids]
 
-    # 想定：LLM出力をJSON化（最低限）
-    article_data = json.loads(raw_article)
+    if not unused:
+        raise RuntimeError("未使用の質問がありません")
 
-    template = load_template()
-    html = build_html(template, article_data, question)
+    q = unused[0]
 
-    filename = f"{today()['slug']}.html"
-    path = os.path.join(POST_DIR, filename)
+    article_html = generate_article(q["question"])
+    today_info = today()
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
+    with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
+        tpl = f.read()
 
-    print(f"Generated: {path}")
+    html = (
+        tpl.replace("{{TITLE}}", esc(q["title"]))
+           .replace("{{META_DESCRIPTION}}", esc(q["question"][:120]))
+           .replace("{{DATE_ISO}}", today_info["iso"])
+           .replace("{{DATE_JP}}", today_info["jp"])
+           .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{q['slug']}.html")
+           .replace("{{LEAD}}", "")
+           .replace("{{QUESTION}}", esc(q["question"]))
+           .replace("{{SUMMARY_ANSWER}}", "")
+           .replace("{{PSYCHOLOGY}}", "")
+           .replace("{{ACTION_LIST}}", "")
+           .replace("{{NG_LIST}}", "")
+           .replace("{{MISUNDERSTANDING}}", "")
+           .replace("{{CONCLUSION}}", "")
+           .replace("{{RELATED}}", "")
+           .replace("{{PREV}}", "")
+           .replace("{{NEXT}}", "")
+           .replace("{{CANONICAL}}", "")
+           .replace("{{FAQ}}", "")
+    )
+
+    html = html.replace("{{CONTENT}}", article_html)
+
+    save_text(os.path.join(POST_DIR, f"{q['slug']}.html"), html)
+
+    used.append({"id": q["id"]})
+    save_json(USED_PATH, used)
+
+    print("✅ 記事生成完了")
 
 if __name__ == "__main__":
     main()
