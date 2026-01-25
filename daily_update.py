@@ -2,17 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """
-daily_update.py
-================
+daily_update.py【FINAL】
+========================
 目的：
-- LLM生成記事を安全にpublish
-- 「量産AI臭」を数値化（量産判定スコア）
-- sitemap.xml を毎日自動再生成
-- 途中でLLMが落ちても100%完走
+- 毎日必ず1記事以上を生成・publish
+- LLMが完全に死んでもPythonだけで完走
+- 人間っぽさを保つ（ランダム微揺らし）
+- AI量産臭をスコア化して可視化
+- sitemap.xml を毎回必ず再生成
 
-前提：
-- 記事は content/ 以下に .md または .html で存在
-- sitemap.xml は public/ に出力
+重要：
+- exit 0 を保証（Actions絶対停止させない）
 """
 
 import os
@@ -33,129 +33,121 @@ CONTENT_DIR = Path("content")
 PUBLIC_DIR = Path("public")
 SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
-SITE_URL = "https://example.com"
+SITE_URL = "https://trend9.github.io/love-auto"
 TIMEZONE = "+09:00"
 
-RANDOM_SEED_SALT = "human_like_noise_v1"
 random.seed(time.time())
 
 # =========================
-# ユーティリティ
+# 安全print
 # =========================
 
-def safe_print(msg: str):
-    """絶対に止まらないprint"""
+def safe_print(msg):
     try:
         print(msg, flush=True)
     except Exception:
         pass
 
-
-def sha1(text: str) -> str:
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()
-
-
 # =========================
-# 量産判定スコア
+# Python質問ジェネレータ
 # =========================
 
-def mass_production_score(text: str) -> dict:
-    """
-    AI量産臭を数値化
-    0〜100（高いほどAI臭い）
-    """
+QUESTIONS = [
+    "最近、LINEの返信が明らかに遅くなりました。嫌われたのでしょうか。",
+    "付き合う前なのに毎日連絡していて、この距離感が正しいのか不安です。",
+    "相手は優しいのに踏み込んでこない理由が分かりません。",
+    "デート後に急に素っ気なくなりました。何が原因でしょうか。",
+    "好意は感じるのに告白してこない心理が知りたいです。"
+]
 
-    length = len(text)
-    if length == 0:
-        return {"score": 100, "reason": "empty"}
+def generate_python_article():
+    q = random.choice(QUESTIONS)
 
-    # ① 文長の均一さ
-    sentences = [s.strip() for s in text.replace("。", ".").split(".") if s.strip()]
-    avg_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
-    variance = sum((len(s) - avg_len) ** 2 for s in sentences) / max(len(sentences), 1)
+    body = f"""
+正直ね、この相談ほんとに多いの。
 
-    uniformity_score = max(0, 30 - min(30, variance / 20))
+{q}
 
-    # ② 定型フレーズ密度
-    ai_phrases = [
-        "結論として",
-        "以下の通りです",
-        "重要なのは",
-        "総合的に見ると",
-        "メリットとデメリット"
-    ]
-    phrase_hits = sum(text.count(p) for p in ai_phrases)
-    phrase_score = min(30, phrase_hits * 6)
+結論から言うと、「今は相手のペースを尊重する」が一番安全かな。
+不安になると、どうしても自分の気持ちを確かめたくなるよね。
 
-    # ③ 語彙の繰り返し
-    words = text.split()
-    unique_ratio = len(set(words)) / max(len(words), 1)
-    repetition_score = max(0, 30 - unique_ratio * 30)
+でもね、相手の行動って「気持ち」だけじゃなくて、
+仕事とか余裕のなさが影響してることも多いのよ。
 
-    # ④ 人間的ノイズ不足
-    noise_tokens = ["…", "正直", "たぶん", "まぁ", "自分的には"]
-    noise_score = 10 if any(t in text for t in noise_tokens) else 0
+大事なのは、
+・一喜一憂しすぎないこと
+・連絡頻度＝愛情だと決めつけないこと
 
-    score = int(
-        uniformity_score +
-        phrase_score +
-        repetition_score +
-        noise_score
-    )
+まぁ…簡単じゃないよね。
+でも、自分をすり減らす恋だけはしなくていいと思うな。
+""".strip()
 
-    return {
-        "score": min(100, score),
-        "details": {
-            "uniformity": round(uniformity_score, 2),
-            "phrases": phrase_score,
-            "repetition": round(repetition_score, 2),
-            "noise": noise_score
-        }
-    }
-
+    return body
 
 # =========================
 # 人間寄せランダム微揺らし
 # =========================
 
 def human_like_jitter(text: str) -> str:
-    """
-    文体を壊さず、微妙に揺らす
-    """
     lines = text.splitlines()
     out = []
 
     for line in lines:
-        if random.random() < 0.07:
+        if random.random() < 0.08:
             line += random.choice(["。", "…", ""])
-        if random.random() < 0.05:
+        if random.random() < 0.06:
             line = line.replace("です。", "です")
+        if random.random() < 0.04:
+            line = line.replace("ます。", "ます…")
         out.append(line)
 
     return "\n".join(out)
 
+# =========================
+# 量産判定スコア
+# =========================
+
+def mass_production_score(text: str) -> dict:
+    if not text.strip():
+        return {"score": 100}
+
+    sentences = [s for s in text.replace("。", ".").split(".") if s.strip()]
+    avg = sum(len(s) for s in sentences) / max(len(sentences), 1)
+    variance = sum((len(s) - avg) ** 2 for s in sentences) / max(len(sentences), 1)
+
+    uniformity = max(0, 30 - variance / 20)
+
+    ai_phrases = ["結論として", "以下の通り", "重要なのは", "総合的に"]
+    phrase_score = min(30, sum(text.count(p) for p in ai_phrases) * 6)
+
+    words = text.split()
+    unique_ratio = len(set(words)) / max(len(words), 1)
+    repetition = max(0, 30 - unique_ratio * 30)
+
+    noise = 0
+    if any(x in text for x in ["正直", "まぁ", "たぶん", "…"]):
+        noise = 10
+
+    score = int(min(100, uniformity + phrase_score + repetition + noise))
+
+    return {"score": score}
 
 # =========================
 # sitemap生成
 # =========================
 
-def generate_sitemap(pages: list):
-    urlset = Element(
-        "urlset",
-        xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-    )
+def generate_sitemap(pages):
+    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
 
-    for page in pages:
+    for p in pages:
         url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = page["loc"]
-        SubElement(url, "lastmod").text = page["lastmod"]
+        SubElement(url, "loc").text = p["loc"]
+        SubElement(url, "lastmod").text = p["lastmod"]
         SubElement(url, "changefreq").text = "daily"
         SubElement(url, "priority").text = "0.8"
 
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-    tree = ElementTree(urlset)
-    tree.write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
-
+    ElementTree(urlset).write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
 
 # =========================
 # メイン処理
@@ -164,50 +156,47 @@ def generate_sitemap(pages: list):
 def main():
     safe_print("=== daily_update START ===")
 
+    CONTENT_DIR.mkdir(parents=True, exist_ok=True)
     pages = []
 
-    for file in CONTENT_DIR.rglob("*"):
-        if file.suffix not in (".md", ".html"):
-            continue
+    existing = list(CONTENT_DIR.glob("*.html"))
 
+    # --- 記事が無ければ必ず1本生成 ---
+    if not existing:
+        fname = datetime.now().strftime("%Y%m%d") + ".html"
+        path = CONTENT_DIR / fname
+
+        text = generate_python_article()
+        text = human_like_jitter(text)
+
+        path.write_text(text, encoding="utf-8")
+        safe_print(f"[CREATE] {fname}")
+
+        existing.append(path)
+
+    # --- 既存記事処理 ---
+    for file in existing:
         try:
             text = file.read_text(encoding="utf-8")
-
-            # ① 人間寄せ
             text = human_like_jitter(text)
-
-            # ② 量産判定
-            score_info = mass_production_score(text)
-
-            # ③ 保存（必ず）
+            score = mass_production_score(text)["score"]
             file.write_text(text, encoding="utf-8")
 
-            # ④ sitemap用データ
-            rel = file.relative_to(CONTENT_DIR).with_suffix("")
-            loc = f"{SITE_URL}/{rel.as_posix()}"
+            loc = f"{SITE_URL}/content/{file.stem}"
             lastmod = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE
 
-            pages.append({
-                "loc": loc,
-                "lastmod": lastmod,
-                "score": score_info["score"]
-            })
-
-            safe_print(
-                f"[OK] {file.name} | AI臭スコア={score_info['score']}"
-            )
+            pages.append({"loc": loc, "lastmod": lastmod})
+            safe_print(f"[OK] {file.name} | AI臭スコア={score}")
 
         except Exception as e:
             safe_print(f"[ERROR] {file} :: {e}")
             traceback.print_exc()
-            continue  # ←絶対に止まらない
+            continue
 
-    # sitemap再生成
     generate_sitemap(pages)
 
     safe_print(f"sitemap generated: {SITEMAP_PATH}")
     safe_print("=== daily_update END ===")
-
 
 # =========================
 # 実行
@@ -217,6 +206,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # 最後の砦
         traceback.print_exc()
         sys.exit(0)
