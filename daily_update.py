@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
 import sys
 import traceback
 import subprocess
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from xml.etree.ElementTree import Element, SubElement, ElementTree
+
+from question_generator import generate_questions
 
 # =========================
 # Paths / Settings
 # =========================
 
 POST_DIR = Path("posts")
-DATA_DIR = Path("data")
-QUESTIONS_PATH = DATA_DIR / "questions.json"
 TEMPLATE_PATH = Path("post_template.html")
 
 PUBLIC_DIR = Path("public")
 SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
 SITE_URL = "https://trend9.github.io/love-auto"
+
 DAILY_GENERATE_COUNT = 2
 
 LLAMA_BIN = "./llama.cpp/main"
@@ -37,13 +38,8 @@ def safe_print(msg):
     except Exception:
         pass
 
-def load_questions():
-    if not QUESTIONS_PATH.exists():
-        return []
-    return json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
-
 # =========================
-# LLM
+# LLM（記事生成）
 # =========================
 
 def call_llm(prompt: str) -> dict:
@@ -67,6 +63,7 @@ def call_llm(prompt: str) -> dict:
     raw = r.stdout.strip()
     s = raw.find("{")
     e = raw.rfind("}")
+
     if s == -1 or e == -1:
         raise RuntimeError("LLM JSON parse error")
 
@@ -76,13 +73,13 @@ def call_llm(prompt: str) -> dict:
 # Prompt
 # =========================
 
-def build_prompt(title, question):
+def build_prompt(question):
     return f"""
 あなたは日本の恋愛相談サイトの記事執筆者です。
 
 【厳守】
 ・人間が書いた自然文体
-・h1〜h3構成を前提に内容分割
+・h1〜h3構成
 ・テンプレ感・一般論禁止
 ・JSONのみ出力
 
@@ -107,7 +104,7 @@ def build_prompt(title, question):
 # HTML
 # =========================
 
-def render_html(data, q, slug):
+def render_html(data, question, slug):
     tpl = TEMPLATE_PATH.read_text(encoding="utf-8")
     now = datetime.now(timezone.utc)
 
@@ -115,7 +112,7 @@ def render_html(data, q, slug):
     html = html.replace("{{TITLE}}", data["title"])
     html = html.replace("{{META_DESCRIPTION}}", data["meta_description"])
     html = html.replace("{{LEAD}}", data["lead"])
-    html = html.replace("{{QUESTION}}", q)
+    html = html.replace("{{QUESTION}}", question)
     html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
     html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
     html = html.replace("{{ACTION_LIST}}", "".join(f"<li>{x}</li>" for x in data["actions"]))
@@ -126,10 +123,6 @@ def render_html(data, q, slug):
     html = html.replace("{{DATE_ISO}}", now.isoformat())
     html = html.replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
     html = html.replace("{{CANONICAL}}", f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">')
-    html = html.replace("{{FAQ}}", "")
-    html = html.replace("{{RELATED}}", "")
-    html = html.replace("{{PREV}}", "")
-    html = html.replace("{{NEXT}}", "")
 
     return html
 
@@ -137,12 +130,14 @@ def render_html(data, q, slug):
 # Sitemap
 # =========================
 
-def generate_sitemap(pages):
+def generate_sitemap():
     urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
-    for p in pages:
+
+    for html in POST_DIR.glob("*.html"):
+        slug = html.stem
         url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = p["loc"]
-        SubElement(url, "lastmod").text = p["lastmod"]
+        SubElement(url, "loc").text = f"{SITE_URL}/posts/{slug}.html"
+        SubElement(url, "lastmod").text = datetime.now(timezone.utc).isoformat()
 
     PUBLIC_DIR.mkdir(exist_ok=True)
     ElementTree(urlset).write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
@@ -155,30 +150,27 @@ def main():
     safe_print("=== daily_update START ===")
 
     POST_DIR.mkdir(exist_ok=True)
-    questions = load_questions()[-DAILY_GENERATE_COUNT:]
 
-    pages = []
+    questions = generate_questions()
+    targets = questions[:DAILY_GENERATE_COUNT]
 
-    for q in questions:
+    for q in targets:
         slug = q["slug"]
         path = POST_DIR / f"{slug}.html"
+
         if path.exists():
+            safe_print(f"[SKIP] {slug}.html")
             continue
 
-        prompt = build_prompt(q["title"], q["question"])
+        prompt = build_prompt(q["question"])
         data = call_llm(prompt)
 
         html = render_html(data, q["question"], slug)
         path.write_text(html, encoding="utf-8")
 
-        pages.append({
-            "loc": f"{SITE_URL}/posts/{slug}.html",
-            "lastmod": datetime.now(timezone.utc).isoformat()
-        })
-
         safe_print(f"[CREATE] {slug}.html")
 
-    generate_sitemap(pages)
+    generate_sitemap()
     safe_print("=== daily_update END ===")
 
 if __name__ == "__main__":
