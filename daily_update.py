@@ -20,8 +20,7 @@ SITE_URL = "https://trend9.github.io/love-auto"
 
 MAX_RETRY = 8
 MAX_CONTEXT = 4096
-
-MIN_SIMILARITY = 0.82  # 意味的に似すぎたらNG
+MIN_SIMILARITY = 0.82
 
 # =========================
 # LLM
@@ -45,8 +44,11 @@ EN_WORD_RE = re.compile(r"\b[a-zA-Z]{3,}\b")
 def load_json(path, default):
     if not os.path.exists(path):
         return default
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return default
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -72,7 +74,7 @@ def slugify_jp(text):
     return re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)[:60]
 
 def normalize(text):
-    return re.sub(r"\s+", "", text)
+    return re.sub(r"\s+", "", text or "")
 
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
@@ -89,19 +91,26 @@ def similarity(a, b):
 
 def is_duplicate_question(title, body, used):
     for q in used:
-        if similarity(title, q["title"]) >= MIN_SIMILARITY:
+        qt = q.get("title")
+        qb = q.get("question")
+
+        if not qt or not qb:
+            continue
+
+        if similarity(title, qt) >= MIN_SIMILARITY:
             return True
-        if similarity(body, q["question"]) >= MIN_SIMILARITY:
+        if similarity(body, qb) >= MIN_SIMILARITY:
             return True
+
     return False
 
 def validate_article_json(data):
-    required_keys = [
+    required = [
         "lead", "summary", "psychology",
         "actions", "ng", "misunderstanding", "conclusion"
     ]
 
-    for k in required_keys:
+    for k in required:
         if k not in data:
             return False
 
@@ -111,8 +120,7 @@ def validate_article_json(data):
     if not isinstance(data["ng"], list) or len(data["ng"]) < 2:
         return False
 
-    text_blob = json.dumps(data, ensure_ascii=False)
-    if has_english_strict(text_blob):
+    if has_english_strict(json.dumps(data, ensure_ascii=False)):
         return False
 
     return True
@@ -125,10 +133,10 @@ def generate_question(used_questions):
     prompt = """
 日本語のみで、実体験ベースの恋愛相談を1件生成してください。
 
-【絶対条件】
-・具体的な出来事（時期・状況・相手の行動）
-・相談者の感情が明確
-・抽象論・一般論は禁止
+【必須】
+・具体的な出来事（時期・行動・やり取り）
+・感情が明確
+・一般論・抽象論は禁止
 ・タイトル20文字以上
 ・本文120文字以上
 
@@ -137,7 +145,7 @@ def generate_question(used_questions):
 質問：〇〇〇
 """
 
-    last_reason = ""
+    last_reason = "不明"
 
     for _ in range(MAX_RETRY):
         r = llm(prompt, max_tokens=600)
@@ -164,16 +172,16 @@ def generate_question(used_questions):
 
         return title, body
 
-    raise RuntimeError(f"質問生成失敗（理由: {last_reason}）")
+    raise RuntimeError(f"質問生成失敗（{last_reason}）")
 
 # =========================
-# Article Generation (JSON)
+# Article Generation
 # =========================
 
 def generate_article(question):
     prompt = f"""
-以下のJSONのみを厳密に出力してください。
-説明文・前置きは禁止。
+以下のJSONのみを出力してください。
+前置き・説明は禁止。
 英語は禁止。
 
 {{
@@ -214,14 +222,13 @@ def main():
 
     title, body = generate_question(used_questions)
     slug = slugify_jp(title)
-    h = content_hash(title, body)
 
     record = {
         "id": uid(),
         "title": title,
-        "slug": slug,
         "question": body,
-        "hash": h,
+        "slug": slug,
+        "hash": content_hash(title, body),
         "created_at": today()["iso"],
         "url": f"posts/{slug}.html"
     }
@@ -257,7 +264,7 @@ def main():
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
 
-    print("✅ 完走：英語ゼロ・量産防止・Actions安定")
+    print("✅ 完走：Actions安定・量産防止・英語ゼロ")
 
 if __name__ == "__main__":
     main()
