@@ -3,12 +3,12 @@
 
 import sys
 import traceback
-import subprocess
 import json
 from pathlib import Path
 from datetime import datetime, timezone
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 
+from llama_cpp import Llama
 from question_generator import generate_questions
 
 # =========================
@@ -24,9 +24,7 @@ SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 SITE_URL = "https://trend9.github.io/love-auto"
 
 DAILY_GENERATE_COUNT = 2
-
-LLAMA_BIN = "./llama.cpp/main"
-LLAMA_MODEL = "./models/model.gguf"
+MODEL_PATH = "./models/model.gguf"
 
 # =========================
 # Utils
@@ -42,32 +40,25 @@ def safe_print(msg):
 # LLM（記事生成）
 # =========================
 
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    temperature=0.9,
+    top_p=0.95,
+    repeat_penalty=1.1,
+    verbose=False,
+)
+
 def call_llm(prompt: str) -> dict:
-    cmd = [
-        LLAMA_BIN,
-        "-m", LLAMA_MODEL,
-        "-p", prompt,
-        "--temp", "0.9",
-        "--top-p", "0.95",
-        "--n-predict", "2048"
-    ]
+    r = llm(prompt, max_tokens=2048)
+    text = r["choices"][0]["text"].strip()
 
-    r = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        timeout=180
-    )
-
-    raw = r.stdout.strip()
-    s = raw.find("{")
-    e = raw.rfind("}")
-
+    s = text.find("{")
+    e = text.rfind("}")
     if s == -1 or e == -1:
         raise RuntimeError("LLM JSON parse error")
 
-    return json.loads(raw[s:e+1])
+    return json.loads(text[s:e+1])
 
 # =========================
 # Prompt
@@ -122,7 +113,10 @@ def render_html(data, question, slug):
     html = html.replace("{{DATE_JP}}", now.astimezone().strftime("%Y年%m月%d日"))
     html = html.replace("{{DATE_ISO}}", now.isoformat())
     html = html.replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
-    html = html.replace("{{CANONICAL}}", f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">')
+    html = html.replace(
+        "{{CANONICAL}}",
+        f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">'
+    )
 
     return html
 
