@@ -6,7 +6,7 @@ from datetime import datetime
 from llama_cpp import Llama
 
 # =========================
-# Paths / Config
+# Config
 # =========================
 
 MODEL_PATH = "./models/model.gguf"
@@ -15,23 +15,19 @@ POST_DIR = "posts"
 QUESTIONS_PATH = "data/questions.json"
 SITE_URL = "https://trend9.github.io/love-auto"
 
+MAX_RETRY = 8
 MAX_CONTEXT = 4096
-MAX_Q_RETRY = 5
-MAX_ARTICLE_RETRY = 4
-MAX_CLEAN_RETRY = 2
-
-ASCII_RATIO_LIMIT = 0.03
 
 # =========================
-# LLM（単一ロード）
+# LLM
 # =========================
 
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
-    temperature=0.6,          # 清書向けに低め
+    temperature=0.7,
     top_p=0.9,
-    repeat_penalty=1.05,
+    repeat_penalty=1.1,
     verbose=False,
 )
 
@@ -42,11 +38,8 @@ llm = Llama(
 def load_json(path, default):
     if not os.path.exists(path):
         return default
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return default
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -77,8 +70,7 @@ def uid():
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 def slugify_jp(text):
-    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
-    return text[:60]
+    return re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)[:60]
 
 def normalize(t):
     return "".join(t.split()).lower()
@@ -86,29 +78,23 @@ def normalize(t):
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
 
-# =========================
-# 英語混入チェック（ASCII比率）
-# =========================
+def ascii_ratio(text):
+    ascii_count = sum(1 for c in text if ord(c) < 128)
+    return ascii_count / max(len(text), 1)
 
-def ascii_ratio(text: str) -> float:
-    if not text:
-        return 0.0
-    return sum(1 for c in text if ord(c) < 128) / len(text)
-
-def is_japanese_only(text: str) -> bool:
-    return ascii_ratio(text) <= ASCII_RATIO_LIMIT
+def has_english_strict(text):
+    return ascii_ratio(text) > 0.02
 
 # =========================
-# 質問生成
+# Question Generation
 # =========================
 
 def generate_question():
     prompt = """
-恋愛・人間関係の実体験相談を1件生成してください。
+日本語のみで、実体験ベースの恋愛相談を1件生成してください。
 
 【条件】
-・日本語のみ
-・具体的な出来事と感情を含める
+・具体的な出来事と感情
 ・タイトル20文字以上
 ・本文120文字以上
 
@@ -117,8 +103,8 @@ def generate_question():
 質問：〇〇〇
 """
 
-    for _ in range(MAX_Q_RETRY):
-        r = llm(prompt, max_tokens=700)
+    for _ in range(MAX_RETRY):
+        r = llm(prompt, max_tokens=600)
         text = r["choices"][0]["text"].strip()
 
         if "タイトル：" not in text or "質問：" not in text:
@@ -127,25 +113,22 @@ def generate_question():
         title = text.split("タイトル：")[1].split("質問：")[0].strip()
         body = text.split("質問：")[1].strip()
 
-        if len(title) < 20:
+        if len(title) < 20 or len(body) < 120:
             continue
-        if len(body) < 120:
-            continue
-        if not is_japanese_only(text):
+
+        if has_english_strict(text):
             continue
 
         return title, body
 
-    print("❌ 質問生成失敗")
-    raise SystemExit(1)
+    raise RuntimeError("質問生成失敗")
 
 # =========================
-# 記事JSON生成
+# Article Generation (JSON)
 # =========================
 
-def generate_article_json(question):
+def generate_article(question):
     prompt = f"""
-あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 以下のJSONのみを出力してください。
 英語は禁止。
 
@@ -163,9 +146,7 @@ def generate_article_json(question):
 {question}
 """
 
-    required = ["lead","summary","psychology","actions","ng","misunderstanding","conclusion"]
-
-    for _ in range(MAX_ARTICLE_RETRY):
+    for _ in range(MAX_RETRY):
         r = llm(prompt, max_tokens=2200)
         raw = r["choices"][0]["text"].strip()
 
@@ -174,52 +155,12 @@ def generate_article_json(question):
         except:
             continue
 
-        if not all(k in data for k in required):
-            continue
-        if not is_japanese_only(json.dumps(data, ensure_ascii=False)):
+        if has_english_strict(json.dumps(data, ensure_ascii=False)):
             continue
 
         return data
 
-    print("❌ 記事JSON生成失敗")
-    raise SystemExit(1)
-
-# =========================
-# 清書LLM（整形のみ）
-# =========================
-
-def clean_article_json(article):
-    prompt = f"""
-以下のJSON文章を清書してください。
-
-【絶対条件】
-・意味を変えない
-・文を追加しない
-・構成を変えない
-・英語・ASCII文字を完全に除去
-・JSON構造は一切変えない
-・キー名は変更しない
-
-JSON：
-{json.dumps(article, ensure_ascii=False, indent=2)}
-"""
-
-    for _ in range(MAX_CLEAN_RETRY):
-        r = llm(prompt, max_tokens=1200)
-        raw = r["choices"][0]["text"].strip()
-
-        try:
-            cleaned = json.loads(raw)
-        except:
-            continue
-
-        if not is_japanese_only(json.dumps(cleaned, ensure_ascii=False)):
-            continue
-
-        return cleaned
-
-    print("❌ 清書フェーズ失敗")
-    raise SystemExit(1)
+    raise RuntimeError("記事生成失敗")
 
 # =========================
 # Main
@@ -228,7 +169,6 @@ JSON：
 def main():
     questions = load_json(QUESTIONS_PATH, [])
 
-    # --- 質問生成 ---
     title, body = generate_question()
     slug = slugify_jp(title)
 
@@ -244,13 +184,8 @@ def main():
 
     save_json(QUESTIONS_PATH, questions)
 
-    # --- 記事生成 ---
-    article = generate_article_json(body)
+    article = generate_article(body)
 
-    # --- 清書 ---
-    article = clean_article_json(article)
-
-    # --- HTML生成 ---
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -278,7 +213,7 @@ def main():
     )
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
-    print("✅ 完走：清書込み・英語ゼロ")
+    print("✅ 完走：Actions安定・量産防止OK")
 
 if __name__ == "__main__":
     main()
