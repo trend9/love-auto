@@ -2,24 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-daily_update.py【FINAL】
-========================
-目的：
-- 毎日必ず1記事以上を生成・publish
-- LLMが完全に死んでもPythonだけで完走
-- 人間っぽさを保つ（ランダム微揺らし）
-- AI量産臭をスコア化して可視化
-- sitemap.xml を毎回必ず再生成
-
-重要：
-- exit 0 を保証（Actions絶対停止させない）
+daily_update.py【FINAL / MULTI GENERATE】
 """
 
 import os
 import sys
 import random
 import time
-import hashlib
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +25,9 @@ SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 SITE_URL = "https://trend9.github.io/love-auto"
 TIMEZONE = "+09:00"
 
+# 1日に生成したい記事数（最低保証）
+DAILY_GENERATE_COUNT = 2  # ←ここを増やせば量産可能
+
 random.seed(time.time())
 
 # =========================
@@ -49,7 +41,7 @@ def safe_print(msg):
         pass
 
 # =========================
-# Python質問ジェネレータ
+# 質問ジェネレータ
 # =========================
 
 QUESTIONS = [
@@ -63,29 +55,27 @@ QUESTIONS = [
 def generate_python_article():
     q = random.choice(QUESTIONS)
 
-    body = f"""
+    return f"""
 正直ね、この相談ほんとに多いの。
 
 {q}
 
 結論から言うと、「今は相手のペースを尊重する」が一番安全かな。
-不安になると、どうしても自分の気持ちを確かめたくなるよね。
 
-でもね、相手の行動って「気持ち」だけじゃなくて、
-仕事とか余裕のなさが影響してることも多いのよ。
+不安になると、どうしても相手の気持ちを確かめたくなるよね。
+でもね、連絡の頻度って、気持ちだけじゃなくて
+余裕のなさが原因なことも本当に多いの。
 
 大事なのは、
 ・一喜一憂しすぎないこと
-・連絡頻度＝愛情だと決めつけないこと
+・相手の行動を1つで決めつけないこと
 
-まぁ…簡単じゃないよね。
-でも、自分をすり減らす恋だけはしなくていいと思うな。
+まぁ…簡単じゃないけどね。
+自分をすり減らす恋だけは、しなくていいと思うよ。
 """.strip()
 
-    return body
-
 # =========================
-# 人間寄せランダム微揺らし
+# 人間寄せ微揺らし
 # =========================
 
 def human_like_jitter(text: str) -> str:
@@ -95,7 +85,7 @@ def human_like_jitter(text: str) -> str:
     for line in lines:
         if random.random() < 0.08:
             line += random.choice(["。", "…", ""])
-        if random.random() < 0.06:
+        if random.random() < 0.05:
             line = line.replace("です。", "です")
         if random.random() < 0.04:
             line = line.replace("ます。", "ます…")
@@ -104,7 +94,7 @@ def human_like_jitter(text: str) -> str:
     return "\n".join(out)
 
 # =========================
-# 量産判定スコア
+# AI臭スコア
 # =========================
 
 def mass_production_score(text: str) -> dict:
@@ -124,13 +114,9 @@ def mass_production_score(text: str) -> dict:
     unique_ratio = len(set(words)) / max(len(words), 1)
     repetition = max(0, 30 - unique_ratio * 30)
 
-    noise = 0
-    if any(x in text for x in ["正直", "まぁ", "たぶん", "…"]):
-        noise = 10
+    noise = 10 if any(x in text for x in ["正直", "まぁ", "たぶん", "…"]) else 0
 
-    score = int(min(100, uniformity + phrase_score + repetition + noise))
-
-    return {"score": score}
+    return {"score": int(min(100, uniformity + phrase_score + repetition + noise))}
 
 # =========================
 # sitemap生成
@@ -150,7 +136,7 @@ def generate_sitemap(pages):
     ElementTree(urlset).write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
 
 # =========================
-# メイン処理
+# メイン
 # =========================
 
 def main():
@@ -159,43 +145,36 @@ def main():
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
     pages = []
 
-    existing = list(CONTENT_DIR.glob("*.html"))
-
-    # --- 記事が無ければ必ず1本生成 ---
-    if not existing:
-        fname = datetime.now().strftime("%Y%m%d") + ".html"
+    # --- 毎日必ずN本生成 ---
+    for i in range(DAILY_GENERATE_COUNT):
+        fname = datetime.now().strftime("%Y%m%d") + f"_{i}.html"
         path = CONTENT_DIR / fname
 
-        text = generate_python_article()
-        text = human_like_jitter(text)
+        if path.exists():
+            continue
 
+        text = human_like_jitter(generate_python_article())
         path.write_text(text, encoding="utf-8")
         safe_print(f"[CREATE] {fname}")
 
-        existing.append(path)
-
-    # --- 既存記事処理 ---
-    for file in existing:
+    # --- 全記事処理 ---
+    for file in CONTENT_DIR.glob("*.html"):
         try:
-            text = file.read_text(encoding="utf-8")
-            text = human_like_jitter(text)
+            text = human_like_jitter(file.read_text(encoding="utf-8"))
             score = mass_production_score(text)["score"]
             file.write_text(text, encoding="utf-8")
 
             loc = f"{SITE_URL}/content/{file.stem}"
             lastmod = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE
-
             pages.append({"loc": loc, "lastmod": lastmod})
+
             safe_print(f"[OK] {file.name} | AI臭スコア={score}")
 
-        except Exception as e:
-            safe_print(f"[ERROR] {file} :: {e}")
+        except Exception:
             traceback.print_exc()
             continue
 
     generate_sitemap(pages)
-
-    safe_print(f"sitemap generated: {SITEMAP_PATH}")
     safe_print("=== daily_update END ===")
 
 # =========================
