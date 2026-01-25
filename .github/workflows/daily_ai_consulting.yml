@@ -13,14 +13,16 @@ on:
 permissions:
   contents: write
 
+# ❌ cancel-in-progress は使わない
+# 同時実行は許可しつつ、後勝ちにする
 concurrency:
   group: daily-ai-update
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # ← これを必ず入れる
+    timeout-minutes: 30
 
     steps:
       # ----------------------
@@ -43,7 +45,7 @@ jobs:
             ${{ runner.os }}-pip-
 
       # ----------------------
-      # 3. Cache LLM model（Q4）
+      # 3. Cache LLM model
       # ----------------------
       - name: Cache LLM model
         uses: actions/cache@v4
@@ -60,35 +62,39 @@ jobs:
           pip install llama-cpp-python
 
       # ----------------------
-      # 5. Download model
+      # 5. Download model (only if needed)
       # ----------------------
       - name: Download Llama model
         run: |
           if [ ! -f models/model.gguf ]; then
             echo "⬇️ Downloading Q4 LLM model..."
             mkdir -p models
-            curl -L --retry 3 -o models/model.gguf \
-            https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
+            curl -L --retry 3 --fail -o models/model.gguf \
+              https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
           else
-            echo "✅ LLM model cache hit (Q4)"
+            echo "✅ LLM model cache hit"
           fi
 
       # ----------------------
       # 6. Run generator
       # ----------------------
       - name: Run daily update
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
+          echo "🚀 Start daily_update.py"
           python daily_update.py
+          echo "✅ daily_update.py finished"
 
       # ----------------------
-      # 7. Commit & push（確実版）
+      # 7. Commit & push
       # ----------------------
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add posts/*.html data/questions.json data/used_questions.json sitemap.xml || true
+          git add posts/*.html data/questions.json sitemap.xml || true
 
           if git diff --cached --quiet; then
             echo "🟡 No changes to commit"

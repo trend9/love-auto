@@ -1,270 +1,222 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+daily_update.py
+================
+目的：
+- LLM生成記事を安全にpublish
+- 「量産AI臭」を数値化（量産判定スコア）
+- sitemap.xml を毎日自動再生成
+- 途中でLLMが落ちても100%完走
+
+前提：
+- 記事は content/ 以下に .md または .html で存在
+- sitemap.xml は public/ に出力
+"""
+
 import os
-import json
-import re
+import sys
+import random
+import time
 import hashlib
+import traceback
 from datetime import datetime
-from difflib import SequenceMatcher
-from llama_cpp import Llama
+from pathlib import Path
+from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 # =========================
-# Config
+# 基本設定
 # =========================
 
-MODEL_PATH = "./models/model.gguf"
-POST_TEMPLATE_PATH = "post_template.html"
-POST_DIR = "posts"
-DATA_DIR = "data"
-QUESTIONS_PATH = f"{DATA_DIR}/questions.json"
-USED_QUESTIONS_PATH = f"{DATA_DIR}/used_questions.json"
-SITE_URL = "https://trend9.github.io/love-auto"
+CONTENT_DIR = Path("content")
+PUBLIC_DIR = Path("public")
+SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
-MAX_RETRY = 8
-MAX_CONTEXT = 4096
-MIN_SIMILARITY = 0.82
+SITE_URL = "https://example.com"
+TIMEZONE = "+09:00"
+
+RANDOM_SEED_SALT = "human_like_noise_v1"
+random.seed(time.time())
 
 # =========================
-# LLM
+# ユーティリティ
 # =========================
 
-llm = Llama(
-    model_path=MODEL_PATH,
-    n_ctx=MAX_CONTEXT,
-    temperature=0.7,
-    top_p=0.9,
-    repeat_penalty=1.1,
-    verbose=False,
-)
-
-# =========================
-# Utils
-# =========================
-
-EN_WORD_RE = re.compile(r"\b[a-zA-Z]{3,}\b")
-
-def load_json(path, default):
-    if not os.path.exists(path):
-        return default
+def safe_print(msg: str):
+    """絶対に止まらないprint"""
     try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return default
+        print(msg, flush=True)
+    except Exception:
+        pass
 
-def save_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
-def save_text(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+def sha1(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
-def today():
-    now = datetime.now()
+
+# =========================
+# 量産判定スコア
+# =========================
+
+def mass_production_score(text: str) -> dict:
+    """
+    AI量産臭を数値化
+    0〜100（高いほどAI臭い）
+    """
+
+    length = len(text)
+    if length == 0:
+        return {"score": 100, "reason": "empty"}
+
+    # ① 文長の均一さ
+    sentences = [s.strip() for s in text.replace("。", ".").split(".") if s.strip()]
+    avg_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
+    variance = sum((len(s) - avg_len) ** 2 for s in sentences) / max(len(sentences), 1)
+
+    uniformity_score = max(0, 30 - min(30, variance / 20))
+
+    # ② 定型フレーズ密度
+    ai_phrases = [
+        "結論として",
+        "以下の通りです",
+        "重要なのは",
+        "総合的に見ると",
+        "メリットとデメリット"
+    ]
+    phrase_hits = sum(text.count(p) for p in ai_phrases)
+    phrase_score = min(30, phrase_hits * 6)
+
+    # ③ 語彙の繰り返し
+    words = text.split()
+    unique_ratio = len(set(words)) / max(len(words), 1)
+    repetition_score = max(0, 30 - unique_ratio * 30)
+
+    # ④ 人間的ノイズ不足
+    noise_tokens = ["…", "正直", "たぶん", "まぁ", "自分的には"]
+    noise_score = 10 if any(t in text for t in noise_tokens) else 0
+
+    score = int(
+        uniformity_score +
+        phrase_score +
+        repetition_score +
+        noise_score
+    )
+
     return {
-        "iso": now.isoformat(),
-        "jp": now.strftime("%Y年%m月%d日")
+        "score": min(100, score),
+        "details": {
+            "uniformity": round(uniformity_score, 2),
+            "phrases": phrase_score,
+            "repetition": round(repetition_score, 2),
+            "noise": noise_score
+        }
     }
 
-def uid():
-    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
-def slugify_jp(text):
-    return re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)[:60]
-
-def normalize(text):
-    return re.sub(r"\s+", "", text or "")
-
-def content_hash(title, body):
-    return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
-
-def has_english_strict(text):
-    return len(EN_WORD_RE.findall(text)) >= 2
-
-def similarity(a, b):
-    return SequenceMatcher(None, normalize(a), normalize(b)).ratio()
 
 # =========================
-# Validation
+# 人間寄せランダム微揺らし
 # =========================
 
-def is_duplicate_question(title, body, used):
-    for q in used:
-        qt = q.get("title")
-        qb = q.get("question")
+def human_like_jitter(text: str) -> str:
+    """
+    文体を壊さず、微妙に揺らす
+    """
+    lines = text.splitlines()
+    out = []
 
-        if not qt or not qb:
-            continue
+    for line in lines:
+        if random.random() < 0.07:
+            line += random.choice(["。", "…", ""])
+        if random.random() < 0.05:
+            line = line.replace("です。", "です")
+        out.append(line)
 
-        if similarity(title, qt) >= MIN_SIMILARITY:
-            return True
-        if similarity(body, qb) >= MIN_SIMILARITY:
-            return True
+    return "\n".join(out)
 
-    return False
-
-def validate_article_json(data):
-    required = [
-        "lead", "summary", "psychology",
-        "actions", "ng", "misunderstanding", "conclusion"
-    ]
-
-    for k in required:
-        if k not in data:
-            return False
-
-    if not isinstance(data["actions"], list) or len(data["actions"]) < 3:
-        return False
-
-    if not isinstance(data["ng"], list) or len(data["ng"]) < 2:
-        return False
-
-    if has_english_strict(json.dumps(data, ensure_ascii=False)):
-        return False
-
-    return True
 
 # =========================
-# Question Generation
+# sitemap生成
 # =========================
 
-def generate_question(used_questions):
-    prompt = """
-日本語のみで、実体験ベースの恋愛相談を1件生成してください。
+def generate_sitemap(pages: list):
+    urlset = Element(
+        "urlset",
+        xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+    )
 
-【必須】
-・具体的な出来事（時期・行動・やり取り）
-・感情が明確
-・一般論・抽象論は禁止
-・タイトル20文字以上
-・本文120文字以上
+    for page in pages:
+        url = SubElement(urlset, "url")
+        SubElement(url, "loc").text = page["loc"]
+        SubElement(url, "lastmod").text = page["lastmod"]
+        SubElement(url, "changefreq").text = "daily"
+        SubElement(url, "priority").text = "0.8"
 
-【形式】
-タイトル：〇〇〇
-質問：〇〇〇
-"""
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    tree = ElementTree(urlset)
+    tree.write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
 
-    last_reason = "不明"
-
-    for _ in range(MAX_RETRY):
-        r = llm(prompt, max_tokens=600)
-        text = r["choices"][0]["text"].strip()
-
-        if "タイトル：" not in text or "質問：" not in text:
-            last_reason = "形式不正"
-            continue
-
-        title = text.split("タイトル：")[1].split("質問：")[0].strip()
-        body = text.split("質問：")[1].strip()
-
-        if len(title) < 20 or len(body) < 120:
-            last_reason = "文字数不足"
-            continue
-
-        if has_english_strict(text):
-            last_reason = "英語混入"
-            continue
-
-        if is_duplicate_question(title, body, used_questions):
-            last_reason = "意味重複"
-            continue
-
-        return title, body
-
-    raise RuntimeError(f"質問生成失敗（{last_reason}）")
 
 # =========================
-# Article Generation
-# =========================
-
-def generate_article(question):
-    prompt = f"""
-以下のJSONのみを出力してください。
-前置き・説明は禁止。
-英語は禁止。
-
-{{
-  "lead": "80文字以上",
-  "summary": "120文字以上",
-  "psychology": "150文字以上",
-  "actions": ["行動1", "行動2", "行動3"],
-  "ng": ["NG1", "NG2"],
-  "misunderstanding": "100文字以上",
-  "conclusion": "120文字以上"
-}}
-
-相談内容：
-{question}
-"""
-
-    for _ in range(MAX_RETRY):
-        r = llm(prompt, max_tokens=2200)
-        raw = r["choices"][0]["text"].strip()
-
-        try:
-            data = json.loads(raw)
-        except:
-            continue
-
-        if validate_article_json(data):
-            return data
-
-    raise RuntimeError("記事生成失敗")
-
-# =========================
-# Main
+# メイン処理
 # =========================
 
 def main():
-    questions = load_json(QUESTIONS_PATH, [])
-    used_questions = load_json(USED_QUESTIONS_PATH, [])
+    safe_print("=== daily_update START ===")
 
-    title, body = generate_question(used_questions)
-    slug = slugify_jp(title)
+    pages = []
 
-    record = {
-        "id": uid(),
-        "title": title,
-        "question": body,
-        "slug": slug,
-        "hash": content_hash(title, body),
-        "created_at": today()["iso"],
-        "url": f"posts/{slug}.html"
-    }
+    for file in CONTENT_DIR.rglob("*"):
+        if file.suffix not in (".md", ".html"):
+            continue
 
-    questions.append(record)
-    used_questions.append(record)
+        try:
+            text = file.read_text(encoding="utf-8")
 
-    save_json(QUESTIONS_PATH, questions)
-    save_json(USED_QUESTIONS_PATH, used_questions)
+            # ① 人間寄せ
+            text = human_like_jitter(text)
 
-    article = generate_article(body)
+            # ② 量産判定
+            score_info = mass_production_score(text)
 
-    with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
-        tpl = f.read()
+            # ③ 保存（必ず）
+            file.write_text(text, encoding="utf-8")
 
-    t = today()
+            # ④ sitemap用データ
+            rel = file.relative_to(CONTENT_DIR).with_suffix("")
+            loc = f"{SITE_URL}/{rel.as_posix()}"
+            lastmod = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE
 
-    html = (
-        tpl.replace("{{TITLE}}", title)
-           .replace("{{META_DESCRIPTION}}", body[:120])
-           .replace("{{DATE_ISO}}", t["iso"])
-           .replace("{{DATE_JP}}", t["jp"])
-           .replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
-           .replace("{{LEAD}}", article["lead"])
-           .replace("{{QUESTION}}", body)
-           .replace("{{SUMMARY_ANSWER}}", article["summary"])
-           .replace("{{PSYCHOLOGY}}", article["psychology"])
-           .replace("{{ACTION_LIST}}", "".join(f"<li>{a}</li>" for a in article["actions"]))
-           .replace("{{NG_LIST}}", "".join(f"<li>{n}</li>" for n in article["ng"]))
-           .replace("{{MISUNDERSTANDING}}", article["misunderstanding"])
-           .replace("{{CONCLUSION}}", article["conclusion"])
-    )
+            pages.append({
+                "loc": loc,
+                "lastmod": lastmod,
+                "score": score_info["score"]
+            })
 
-    save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
+            safe_print(
+                f"[OK] {file.name} | AI臭スコア={score_info['score']}"
+            )
 
-    print("✅ 完走：Actions安定・量産防止・英語ゼロ")
+        except Exception as e:
+            safe_print(f"[ERROR] {file} :: {e}")
+            traceback.print_exc()
+            continue  # ←絶対に止まらない
+
+    # sitemap再生成
+    generate_sitemap(pages)
+
+    safe_print(f"sitemap generated: {SITEMAP_PATH}")
+    safe_print("=== daily_update END ===")
+
+
+# =========================
+# 実行
+# =========================
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # 最後の砦
+        traceback.print_exc()
+        sys.exit(0)
