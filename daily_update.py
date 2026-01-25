@@ -18,13 +18,13 @@ SITE_URL = "https://trend9.github.io/love-auto"
 MAX_CONTEXT = 4096
 
 # =========================
-# LLM（単一プロセス）
+# LLM（単一ロード）
 # =========================
 
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
-    temperature=0.7,
+    temperature=0.75,
     top_p=0.9,
     repeat_penalty=1.1,
     verbose=False,
@@ -85,7 +85,7 @@ def has_english(text):
     return bool(re.search(r"[A-Za-z]", text))
 
 # =========================
-# Question Generate（修正ループ）
+# Question Generate（絶対完走）
 # =========================
 
 def generate_question():
@@ -102,16 +102,13 @@ def generate_question():
 タイトル：〇〇〇
 質問：〇〇〇
 """
-    last_text = ""
 
     while True:
         r = llm(prompt, max_tokens=700)
         text = r["choices"][0]["text"].strip()
 
-        last_text = text
-
         if "タイトル：" not in text or "質問：" not in text:
-            prompt = f"形式が間違っています。正しい形式で修正してください。\n{text}"
+            prompt = f"形式が違います。正しい形式で修正してください。\n{text}"
             continue
 
         title = text.split("タイトル：")[1].split("質問：")[0].strip()
@@ -119,29 +116,29 @@ def generate_question():
 
         errors = []
         if len(title) < 20:
-            errors.append("タイトルが短すぎます")
+            errors.append("タイトルが短い")
         if len(body) < 120:
-            errors.append("本文が短すぎます")
+            errors.append("本文が短い")
         if has_english(text):
-            errors.append("英語が含まれています")
+            errors.append("英語が含まれている")
 
         if not errors:
             return title, body
 
         prompt = f"""
-以下の問題点を修正してください。
+以下の問題点をすべて修正してください。
 {chr(10).join(errors)}
 
 修正対象：
-{last_text}
+{text}
 """
 
 # =========================
-# Article Generate（JSON）
+# Article Generate（JSON保証）
 # =========================
 
 def generate_article(question):
-    base_prompt = f"""
+    prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
 
 以下のJSONのみを出力してください。
@@ -160,21 +157,19 @@ def generate_article(question):
 相談内容：
 {question}
 """
-    raw = ""
 
     while True:
-        r = llm(base_prompt, max_tokens=2200)
+        r = llm(prompt, max_tokens=2200)
         raw = r["choices"][0]["text"].strip()
 
         try:
             data = json.loads(raw)
         except:
-            base_prompt = f"JSON形式が壊れています。JSONのみで修正してください。\n{raw}"
+            prompt = f"JSONが壊れています。JSONのみで修正してください。\n{raw}"
             continue
 
-        joined = json.dumps(data, ensure_ascii=False)
-        if has_english(joined):
-            base_prompt = f"英語をすべて削除し、日本語として自然に修正してください。\n{joined}"
+        if has_english(json.dumps(data, ensure_ascii=False)):
+            prompt = f"英語を完全に除去し、日本語として修正してください。\n{json.dumps(data, ensure_ascii=False)}"
             continue
 
         return data
@@ -230,7 +225,7 @@ def main():
     )
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
-    print("✅ フォールバック無し・完全自動生成 完了")
+    print("✅ 完走：フォールバック無し・例外無し")
 
 if __name__ == "__main__":
     main()
