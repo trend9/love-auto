@@ -6,7 +6,7 @@ from datetime import datetime
 from llama_cpp import Llama
 
 # =========================
-# Paths
+# Paths / Config
 # =========================
 
 MODEL_PATH = "./models/model.gguf"
@@ -16,6 +16,11 @@ QUESTIONS_PATH = "data/questions.json"
 SITE_URL = "https://trend9.github.io/love-auto"
 
 MAX_CONTEXT = 4096
+MAX_Q_RETRY = 5
+MAX_ARTICLE_RETRY = 4
+MAX_CLEAN_RETRY = 2
+
+ASCII_RATIO_LIMIT = 0.03
 
 # =========================
 # LLM（単一ロード）
@@ -24,9 +29,9 @@ MAX_CONTEXT = 4096
 llm = Llama(
     model_path=MODEL_PATH,
     n_ctx=MAX_CONTEXT,
-    temperature=0.75,
+    temperature=0.6,          # 清書向けに低め
     top_p=0.9,
-    repeat_penalty=1.1,
+    repeat_penalty=1.05,
     verbose=False,
 )
 
@@ -81,11 +86,20 @@ def normalize(t):
 def content_hash(title, body):
     return hashlib.sha256((normalize(title) + normalize(body)).encode()).hexdigest()
 
-def has_english(text):
-    return bool(re.search(r"[A-Za-z]", text))
+# =========================
+# 英語混入チェック（ASCII比率）
+# =========================
+
+def ascii_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    return sum(1 for c in text if ord(c) < 128) / len(text)
+
+def is_japanese_only(text: str) -> bool:
+    return ascii_ratio(text) <= ASCII_RATIO_LIMIT
 
 # =========================
-# Question Generate（絶対完走）
+# 質問生成
 # =========================
 
 def generate_question():
@@ -103,44 +117,35 @@ def generate_question():
 質問：〇〇〇
 """
 
-    while True:
+    for _ in range(MAX_Q_RETRY):
         r = llm(prompt, max_tokens=700)
         text = r["choices"][0]["text"].strip()
 
         if "タイトル：" not in text or "質問：" not in text:
-            prompt = f"形式が違います。正しい形式で修正してください。\n{text}"
             continue
 
         title = text.split("タイトル：")[1].split("質問：")[0].strip()
         body = text.split("質問：")[1].strip()
 
-        errors = []
         if len(title) < 20:
-            errors.append("タイトルが短い")
+            continue
         if len(body) < 120:
-            errors.append("本文が短い")
-        if has_english(text):
-            errors.append("英語が含まれている")
+            continue
+        if not is_japanese_only(text):
+            continue
 
-        if not errors:
-            return title, body
+        return title, body
 
-        prompt = f"""
-以下の問題点をすべて修正してください。
-{chr(10).join(errors)}
-
-修正対象：
-{text}
-"""
+    print("❌ 質問生成失敗")
+    raise SystemExit(1)
 
 # =========================
-# Article Generate（JSON保証）
+# 記事JSON生成
 # =========================
 
-def generate_article(question):
+def generate_article_json(question):
     prompt = f"""
 あなたは恋愛相談に答える日本人女性AI「結姉さん」です。
-
 以下のJSONのみを出力してください。
 英語は禁止。
 
@@ -158,21 +163,63 @@ def generate_article(question):
 {question}
 """
 
-    while True:
+    required = ["lead","summary","psychology","actions","ng","misunderstanding","conclusion"]
+
+    for _ in range(MAX_ARTICLE_RETRY):
         r = llm(prompt, max_tokens=2200)
         raw = r["choices"][0]["text"].strip()
 
         try:
             data = json.loads(raw)
         except:
-            prompt = f"JSONが壊れています。JSONのみで修正してください。\n{raw}"
             continue
 
-        if has_english(json.dumps(data, ensure_ascii=False)):
-            prompt = f"英語を完全に除去し、日本語として修正してください。\n{json.dumps(data, ensure_ascii=False)}"
+        if not all(k in data for k in required):
+            continue
+        if not is_japanese_only(json.dumps(data, ensure_ascii=False)):
             continue
 
         return data
+
+    print("❌ 記事JSON生成失敗")
+    raise SystemExit(1)
+
+# =========================
+# 清書LLM（整形のみ）
+# =========================
+
+def clean_article_json(article):
+    prompt = f"""
+以下のJSON文章を清書してください。
+
+【絶対条件】
+・意味を変えない
+・文を追加しない
+・構成を変えない
+・英語・ASCII文字を完全に除去
+・JSON構造は一切変えない
+・キー名は変更しない
+
+JSON：
+{json.dumps(article, ensure_ascii=False, indent=2)}
+"""
+
+    for _ in range(MAX_CLEAN_RETRY):
+        r = llm(prompt, max_tokens=1200)
+        raw = r["choices"][0]["text"].strip()
+
+        try:
+            cleaned = json.loads(raw)
+        except:
+            continue
+
+        if not is_japanese_only(json.dumps(cleaned, ensure_ascii=False)):
+            continue
+
+        return cleaned
+
+    print("❌ 清書フェーズ失敗")
+    raise SystemExit(1)
 
 # =========================
 # Main
@@ -181,6 +228,7 @@ def generate_article(question):
 def main():
     questions = load_json(QUESTIONS_PATH, [])
 
+    # --- 質問生成 ---
     title, body = generate_question()
     slug = slugify_jp(title)
 
@@ -196,8 +244,13 @@ def main():
 
     save_json(QUESTIONS_PATH, questions)
 
-    article = generate_article(body)
+    # --- 記事生成 ---
+    article = generate_article_json(body)
 
+    # --- 清書 ---
+    article = clean_article_json(article)
+
+    # --- HTML生成 ---
     with open(POST_TEMPLATE_PATH, encoding="utf-8") as f:
         tpl = f.read()
 
@@ -225,7 +278,7 @@ def main():
     )
 
     save_text(os.path.join(POST_DIR, f"{slug}.html"), html)
-    print("✅ 完走：フォールバック無し・例外無し")
+    print("✅ 完走：清書込み・英語ゼロ")
 
 if __name__ == "__main__":
     main()
