@@ -1,37 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-daily_update.py【FINAL / MULTI GENERATE】
-"""
-
-import os
+import json
 import sys
-import random
-import time
 import traceback
-from datetime import datetime
+import subprocess
 from pathlib import Path
+from datetime import datetime, timezone
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 # =========================
-# 基本設定
+# Paths / Settings
 # =========================
 
-CONTENT_DIR = Path("content")
+POST_DIR = Path("posts")
+DATA_DIR = Path("data")
+QUESTIONS_PATH = DATA_DIR / "questions.json"
+TEMPLATE_PATH = Path("post_template.html")
+
 PUBLIC_DIR = Path("public")
 SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
 SITE_URL = "https://trend9.github.io/love-auto"
-TIMEZONE = "+09:00"
+DAILY_GENERATE_COUNT = 2
 
-# 1日に生成したい記事数（最低保証）
-DAILY_GENERATE_COUNT = 2  # ←ここを増やせば量産可能
-
-random.seed(time.time())
+LLAMA_BIN = "./llama.cpp/main"
+LLAMA_MODEL = "./models/model.gguf"
 
 # =========================
-# 安全print
+# Utils
 # =========================
 
 def safe_print(msg):
@@ -40,150 +37,153 @@ def safe_print(msg):
     except Exception:
         pass
 
+def load_questions():
+    if not QUESTIONS_PATH.exists():
+        return []
+    return json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
+
 # =========================
-# 質問ジェネレータ
+# LLM
 # =========================
 
-QUESTIONS = [
-    "最近、LINEの返信が明らかに遅くなりました。嫌われたのでしょうか。",
-    "付き合う前なのに毎日連絡していて、この距離感が正しいのか不安です。",
-    "相手は優しいのに踏み込んでこない理由が分かりません。",
-    "デート後に急に素っ気なくなりました。何が原因でしょうか。",
-    "好意は感じるのに告白してこない心理が知りたいです。"
-]
+def call_llm(prompt: str) -> dict:
+    cmd = [
+        LLAMA_BIN,
+        "-m", LLAMA_MODEL,
+        "-p", prompt,
+        "--temp", "0.9",
+        "--top-p", "0.95",
+        "--n-predict", "2048"
+    ]
 
-def generate_python_article():
-    q = random.choice(QUESTIONS)
+    r = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        timeout=180
+    )
 
+    raw = r.stdout.strip()
+    s = raw.find("{")
+    e = raw.rfind("}")
+    if s == -1 or e == -1:
+        raise RuntimeError("LLM JSON parse error")
+
+    return json.loads(raw[s:e+1])
+
+# =========================
+# Prompt
+# =========================
+
+def build_prompt(title, question):
     return f"""
-正直ね、この相談ほんとに多いの。
+あなたは日本の恋愛相談サイトの記事執筆者です。
 
-{q}
+【厳守】
+・人間が書いた自然文体
+・h1〜h3構成を前提に内容分割
+・テンプレ感・一般論禁止
+・JSONのみ出力
 
-結論から言うと、「今は相手のペースを尊重する」が一番安全かな。
+出力形式：
+{{
+  "title": "",
+  "meta_description": "",
+  "lead": "",
+  "summary_answer": "",
+  "psychology": "",
+  "actions": ["", "", ""],
+  "ng": ["", "", ""],
+  "misunderstanding": "",
+  "conclusion": ""
+}}
 
-不安になると、どうしても相手の気持ちを確かめたくなるよね。
-でもね、連絡の頻度って、気持ちだけじゃなくて
-余裕のなさが原因なことも本当に多いの。
-
-大事なのは、
-・一喜一憂しすぎないこと
-・相手の行動を1つで決めつけないこと
-
-まぁ…簡単じゃないけどね。
-自分をすり減らす恋だけは、しなくていいと思うよ。
+相談内容：
+{question}
 """.strip()
 
 # =========================
-# 人間寄せ微揺らし
+# HTML
 # =========================
 
-def human_like_jitter(text: str) -> str:
-    lines = text.splitlines()
-    out = []
+def render_html(data, q, slug):
+    tpl = TEMPLATE_PATH.read_text(encoding="utf-8")
+    now = datetime.now(timezone.utc)
 
-    for line in lines:
-        if random.random() < 0.08:
-            line += random.choice(["。", "…", ""])
-        if random.random() < 0.05:
-            line = line.replace("です。", "です")
-        if random.random() < 0.04:
-            line = line.replace("ます。", "ます…")
-        out.append(line)
+    html = tpl
+    html = html.replace("{{TITLE}}", data["title"])
+    html = html.replace("{{META_DESCRIPTION}}", data["meta_description"])
+    html = html.replace("{{LEAD}}", data["lead"])
+    html = html.replace("{{QUESTION}}", q)
+    html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
+    html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
+    html = html.replace("{{ACTION_LIST}}", "".join(f"<li>{x}</li>" for x in data["actions"]))
+    html = html.replace("{{NG_LIST}}", "".join(f"<li>{x}</li>" for x in data["ng"]))
+    html = html.replace("{{MISUNDERSTANDING}}", data["misunderstanding"])
+    html = html.replace("{{CONCLUSION}}", data["conclusion"])
+    html = html.replace("{{DATE_JP}}", now.astimezone().strftime("%Y年%m月%d日"))
+    html = html.replace("{{DATE_ISO}}", now.isoformat())
+    html = html.replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
+    html = html.replace("{{CANONICAL}}", f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">')
+    html = html.replace("{{FAQ}}", "")
+    html = html.replace("{{RELATED}}", "")
+    html = html.replace("{{PREV}}", "")
+    html = html.replace("{{NEXT}}", "")
 
-    return "\n".join(out)
-
-# =========================
-# AI臭スコア
-# =========================
-
-def mass_production_score(text: str) -> dict:
-    if not text.strip():
-        return {"score": 100}
-
-    sentences = [s for s in text.replace("。", ".").split(".") if s.strip()]
-    avg = sum(len(s) for s in sentences) / max(len(sentences), 1)
-    variance = sum((len(s) - avg) ** 2 for s in sentences) / max(len(sentences), 1)
-
-    uniformity = max(0, 30 - variance / 20)
-
-    ai_phrases = ["結論として", "以下の通り", "重要なのは", "総合的に"]
-    phrase_score = min(30, sum(text.count(p) for p in ai_phrases) * 6)
-
-    words = text.split()
-    unique_ratio = len(set(words)) / max(len(words), 1)
-    repetition = max(0, 30 - unique_ratio * 30)
-
-    noise = 10 if any(x in text for x in ["正直", "まぁ", "たぶん", "…"]) else 0
-
-    return {"score": int(min(100, uniformity + phrase_score + repetition + noise))}
+    return html
 
 # =========================
-# sitemap生成
+# Sitemap
 # =========================
 
 def generate_sitemap(pages):
     urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
-
     for p in pages:
         url = SubElement(urlset, "url")
         SubElement(url, "loc").text = p["loc"]
         SubElement(url, "lastmod").text = p["lastmod"]
-        SubElement(url, "changefreq").text = "daily"
-        SubElement(url, "priority").text = "0.8"
 
-    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    PUBLIC_DIR.mkdir(exist_ok=True)
     ElementTree(urlset).write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
 
 # =========================
-# メイン
+# Main
 # =========================
 
 def main():
     safe_print("=== daily_update START ===")
 
-    CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    POST_DIR.mkdir(exist_ok=True)
+    questions = load_questions()[-DAILY_GENERATE_COUNT:]
+
     pages = []
 
-    # --- 毎日必ずN本生成 ---
-    for i in range(DAILY_GENERATE_COUNT):
-        fname = datetime.now().strftime("%Y%m%d") + f"_{i}.html"
-        path = CONTENT_DIR / fname
-
+    for q in questions:
+        slug = q["slug"]
+        path = POST_DIR / f"{slug}.html"
         if path.exists():
             continue
 
-        text = human_like_jitter(generate_python_article())
-        path.write_text(text, encoding="utf-8")
-        safe_print(f"[CREATE] {fname}")
+        prompt = build_prompt(q["title"], q["question"])
+        data = call_llm(prompt)
 
-    # --- 全記事処理 ---
-    for file in CONTENT_DIR.glob("*.html"):
-        try:
-            text = human_like_jitter(file.read_text(encoding="utf-8"))
-            score = mass_production_score(text)["score"]
-            file.write_text(text, encoding="utf-8")
+        html = render_html(data, q["question"], slug)
+        path.write_text(html, encoding="utf-8")
 
-            loc = f"{SITE_URL}/content/{file.stem}"
-            lastmod = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE
-            pages.append({"loc": loc, "lastmod": lastmod})
+        pages.append({
+            "loc": f"{SITE_URL}/posts/{slug}.html",
+            "lastmod": datetime.now(timezone.utc).isoformat()
+        })
 
-            safe_print(f"[OK] {file.name} | AI臭スコア={score}")
-
-        except Exception:
-            traceback.print_exc()
-            continue
+        safe_print(f"[CREATE] {slug}.html")
 
     generate_sitemap(pages)
     safe_print("=== daily_update END ===")
-
-# =========================
-# 実行
-# =========================
 
 if __name__ == "__main__":
     try:
         main()
     except Exception:
         traceback.print_exc()
-        sys.exit(0)
+        sys.exit(1)
