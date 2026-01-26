@@ -4,6 +4,7 @@
 import sys
 import traceback
 import json
+import random
 from pathlib import Path
 from datetime import datetime, timezone
 from xml.etree.ElementTree import Element, SubElement, ElementTree
@@ -15,16 +16,20 @@ from question_generator import generate_questions
 # Paths / Settings
 # =========================
 
-POST_DIR = Path("posts")
-TEMPLATE_PATH = Path("post_template.html")
+BASE_DIR = Path(__file__).parent
 
-PUBLIC_DIR = Path("public")
+POST_DIR = BASE_DIR / "posts"
+TEMPLATE_PATH = BASE_DIR / "post_template.html"
+
+PUBLIC_DIR = BASE_DIR / "public"
 SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
 SITE_URL = "https://trend9.github.io/love-auto"
 
-DAILY_GENERATE_COUNT = 2
-MODEL_PATH = "./models/model.gguf"
+# cron前提なので「少量・確実」
+DAILY_GENERATE_COUNT = 1
+
+MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
 # =========================
 # Utils
@@ -37,11 +42,13 @@ def safe_print(msg):
         pass
 
 # =========================
-# LLM（記事生成）
+# LLM 初期化
 # =========================
 
+safe_print("Initializing LLM...")
+
 llm = Llama(
-    model_path=MODEL_PATH,
+    model_path=str(MODEL_PATH),
     n_ctx=2048,
     temperature=0.9,
     top_p=0.95,
@@ -49,30 +56,39 @@ llm = Llama(
     verbose=False,
 )
 
+# =========================
+# LLM Call
+# =========================
+
 def call_llm(prompt: str) -> dict:
     r = llm(prompt, max_tokens=2048)
     text = r["choices"][0]["text"].strip()
 
     s = text.find("{")
     e = text.rfind("}")
-    if s == -1 or e == -1:
-        raise RuntimeError("LLM JSON parse error")
 
-    return json.loads(text[s:e+1])
+    if s == -1 or e == -1 or e <= s:
+        raise RuntimeError("LLM output does not contain valid JSON")
+
+    try:
+        return json.loads(text[s:e + 1])
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"JSON parse failed: {e}")
 
 # =========================
 # Prompt
 # =========================
 
-def build_prompt(question):
+def build_prompt(question: str) -> str:
     return f"""
-あなたは日本の恋愛相談サイトの記事執筆者です。
+あなたは日本の恋愛相談サイトの専属ライターです。
 
-【厳守】
-・人間が書いた自然文体
-・h1〜h3構成
-・テンプレ感・一般論禁止
-・JSONのみ出力
+【厳守ルール】
+・SEOを意識しすぎた不自然な文章は禁止
+・人間が本音で書いたような自然文体
+・一般論・テンプレ回答は禁止
+・h1〜h3構成を意識
+・JSON以外は絶対に出力しない
 
 出力形式：
 {{
@@ -92,10 +108,10 @@ def build_prompt(question):
 """.strip()
 
 # =========================
-# HTML
+# HTML Render
 # =========================
 
-def render_html(data, question, slug):
+def render_html(data: dict, question: str, slug: str) -> str:
     tpl = TEMPLATE_PATH.read_text(encoding="utf-8")
     now = datetime.now(timezone.utc)
 
@@ -106,8 +122,14 @@ def render_html(data, question, slug):
     html = html.replace("{{QUESTION}}", question)
     html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
     html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
-    html = html.replace("{{ACTION_LIST}}", "".join(f"<li>{x}</li>" for x in data["actions"]))
-    html = html.replace("{{NG_LIST}}", "".join(f"<li>{x}</li>" for x in data["ng"]))
+    html = html.replace(
+        "{{ACTION_LIST}}",
+        "".join(f"<li>{x}</li>" for x in data["actions"])
+    )
+    html = html.replace(
+        "{{NG_LIST}}",
+        "".join(f"<li>{x}</li>" for x in data["ng"])
+    )
     html = html.replace("{{MISUNDERSTANDING}}", data["misunderstanding"])
     html = html.replace("{{CONCLUSION}}", data["conclusion"])
     html = html.replace("{{DATE_JP}}", now.astimezone().strftime("%Y年%m月%d日"))
@@ -127,14 +149,18 @@ def render_html(data, question, slug):
 def generate_sitemap():
     urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
 
-    for html in POST_DIR.glob("*.html"):
-        slug = html.stem
+    for html_file in sorted(POST_DIR.glob("*.html")):
+        slug = html_file.stem
         url = SubElement(urlset, "url")
         SubElement(url, "loc").text = f"{SITE_URL}/posts/{slug}.html"
         SubElement(url, "lastmod").text = datetime.now(timezone.utc).isoformat()
 
     PUBLIC_DIR.mkdir(exist_ok=True)
-    ElementTree(urlset).write(SITEMAP_PATH, encoding="utf-8", xml_declaration=True)
+    ElementTree(urlset).write(
+        SITEMAP_PATH,
+        encoding="utf-8",
+        xml_declaration=True
+    )
 
 # =========================
 # Main
@@ -146,15 +172,25 @@ def main():
     POST_DIR.mkdir(exist_ok=True)
 
     questions = generate_questions()
-    targets = questions[:DAILY_GENERATE_COUNT]
+    if not questions:
+        safe_print("No questions generated")
+        return
+
+    # 毎回ランダムで 1件（固定化しない）
+    targets = random.sample(
+        questions,
+        k=min(DAILY_GENERATE_COUNT, len(questions))
+    )
 
     for q in targets:
         slug = q["slug"]
         path = POST_DIR / f"{slug}.html"
 
         if path.exists():
-            safe_print(f"[SKIP] {slug}.html")
+            safe_print(f"[SKIP] {slug}.html already exists")
             continue
+
+        safe_print(f"[GEN] {slug}")
 
         prompt = build_prompt(q["question"])
         data = call_llm(prompt)
@@ -166,6 +202,10 @@ def main():
 
     generate_sitemap()
     safe_print("=== daily_update END ===")
+
+# =========================
+# Entrypoint
+# =========================
 
 if __name__ == "__main__":
     try:
