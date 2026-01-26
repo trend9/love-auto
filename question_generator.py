@@ -16,7 +16,7 @@ BASE_DIR = Path(__file__).parent
 
 MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
-# cron前提：多く作らない
+# cron前提：少量・確実
 GENERATE_COUNT = 3
 MAX_RETRY = 20
 
@@ -26,6 +26,12 @@ MIN_BODY_LEN = 120
 # =========================
 # Utils
 # =========================
+
+def safe_print(msg: str):
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
 
 def slugify_jp(text: str) -> str:
     text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
@@ -43,8 +49,10 @@ def now() -> str:
     return datetime.now().isoformat()
 
 # =========================
-# LLM
+# LLM 初期化
 # =========================
+
+safe_print("Initializing Question LLM...")
 
 llm = Llama(
     model_path=str(MODEL_PATH),
@@ -74,62 +82,89 @@ PROMPT = """
 """.strip()
 
 # =========================
-# Generate core
+# Generate core（壊れない）
 # =========================
 
 def generate_one() -> dict | None:
-    r = llm(PROMPT, max_tokens=700)
-    text = r["choices"][0]["text"].strip()
-
-    if "タイトル：" not in text or "質問：" not in text:
-        return None
-
     try:
+        r = llm(PROMPT, max_tokens=700)
+        text = r["choices"][0]["text"].strip()
+
+        if "タイトル：" not in text or "質問：" not in text:
+            return None
+
         title = text.split("タイトル：", 1)[1].split("質問：", 1)[0].strip()
         body = text.split("質問：", 1)[1].strip()
+
+        if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
+            return None
+
+        slug = slugify_jp(title)
+
+        return {
+            "title": title,
+            "question": body,
+            "slug": slug,
+            "created_at": now(),
+            "content_hash": content_hash(title, body),
+        }
+
     except Exception:
         return None
 
-    if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
-        return None
-
-    slug = slugify_jp(title)
-
-    return {
-        "title": title,
-        "question": body,
-        "slug": slug,
-        "created_at": now(),
-        "content_hash": content_hash(title, body),
-    }
-
 # =========================
-# Public API
+# Public API（cron最適化）
 # =========================
 
 def generate_questions() -> list[dict]:
     results = []
     hashes = set()
 
+    # ログ用カウンタ
+    stat = {
+        "try": 0,
+        "success": 0,
+        "invalid": 0,
+        "duplicate": 0,
+    }
+
     for _ in range(MAX_RETRY):
         if len(results) >= GENERATE_COUNT:
             break
 
+        stat["try"] += 1
+
         q = generate_one()
         if not q:
+            stat["invalid"] += 1
             continue
 
         if q["content_hash"] in hashes:
+            stat["duplicate"] += 1
             continue
 
         hashes.add(q["content_hash"])
         results.append(q)
+        stat["success"] += 1
 
-    # cron前提：0件でも落とさない
+    # ===== ログ出力（重要）=====
+    success_rate = (
+        (stat["success"] / stat["try"]) * 100
+        if stat["try"] > 0 else 0
+    )
+
+    safe_print(
+        "[QUESTION_GENERATOR] "
+        f"try={stat['try']} "
+        f"success={stat['success']} "
+        f"invalid={stat['invalid']} "
+        f"duplicate={stat['duplicate']} "
+        f"rate={success_rate:.1f}%"
+    )
+
+    # cron前提：0件でも絶対に落とさない
     if not results:
         return []
 
-    # 毎回順序を固定しない
     random.shuffle(results)
-
     return results
