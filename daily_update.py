@@ -1,5 +1,4 @@
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +24,45 @@ DATA_DIR.mkdir(exist_ok=True)
 
 
 # =========================
+# JSON Utility
+# =========================
+def load_json(path, default):
+    if not path.exists():
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# =========================
+# used_questions 安全取得
+# =========================
+questions = load_json(QUESTIONS_PATH, [])
+
+if not questions:
+    raise RuntimeError("used_questions.json が空です")
+
+latest = questions[-1]
+
+if isinstance(latest, str):
+    question_text = latest
+elif isinstance(latest, dict):
+    question_text = (
+        latest.get("question")
+        or latest.get("text")
+        or latest.get("content")
+    )
+else:
+    raise RuntimeError("used_questions.json の形式が不正です")
+
+if not question_text:
+    raise RuntimeError("質問文が取得できません")
+
+# =========================
 # LLM 初期化
 # =========================
 llm = Llama(
@@ -36,13 +74,11 @@ llm = Llama(
 
 PROMPT = """
 以下の恋愛相談に対して、日本語のみで恋愛相談記事を書いてください。
-英語・ローマ字・翻訳文は禁止です。
 
-【必須条件】
+【必須】
 ・全て日本語
-・SEOを意識した丁寧な文章
-・各項目は必ず1文以上書く
-・出力形式を厳守する
+・出力形式を厳守
+・各項目は必ず1文以上
 
 【出力フォーマット】
 タイトル：
@@ -62,130 +98,104 @@ PROMPT = """
 【相談内容】
 """
 
-
-# =========================
-# ユーティリティ
-# =========================
-def load_json(path, default):
-    if not path.exists():
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def extract_section(text, key):
-    pattern = rf"{key}：(.+?)(?=\n\S+：|\Z)"
-    m = re.search(pattern, text, re.S)
-    return m.group(1).strip() if m else ""
-
-
-def extract_list(text, key):
-    block = extract_section(text, key)
-    items = []
-    for line in block.splitlines():
-        line = line.strip()
-        if line.startswith("-"):
-            items.append(line[1:].strip())
-    return items
-
-
-# =========================
-# データ読み込み
-# =========================
-questions = load_json(QUESTIONS_PATH, [])
-if not questions:
-    raise RuntimeError("used_questions.json が空です")
-
-question = questions[-1]["question"]
-
-index = load_json(INDEX_PATH, [])
-
-
 # =========================
 # LLM 実行
 # =========================
 res = llm(
-    PROMPT + question,
+    PROMPT + question_text,
     max_tokens=1600,
 )
 
 output = res["choices"][0]["text"].strip()
 
-required_keys = [
-    "タイトル",
-    "要約",
-    "結論",
-    "相手の心理",
-    "具体的な行動",
-    "避けたい行動",
-    "よくある勘違い",
-    "まとめ",
+required = [
+    "タイトル：",
+    "要約：",
+    "結論：",
+    "相手の心理：",
+    "具体的な行動：",
+    "避けたい行動：",
+    "よくある勘違い：",
+    "まとめ：",
 ]
 
-if not all(k + "：" in output for k in required_keys):
+if not all(k in output for k in required):
     raise RuntimeError("Invalid LLM output")
 
-
 # =========================
-# 各要素抽出
+# 抽出関数
 # =========================
-title = extract_section(output, "タイトル")
-summary = extract_section(output, "要約")
-conclusion = extract_section(output, "結論")
-psychology = extract_section(output, "相手の心理")
-actions = extract_list(output, "具体的な行動")
-ng_actions = extract_list(output, "避けたい行動")
-misunderstanding = extract_section(output, "よくある勘違い")
-closing = extract_section(output, "まとめ")
+def extract_block(key):
+    m = re.search(rf"{key}：(.+?)(?=\n\S+：|\Z)", output, re.S)
+    return m.group(1).strip() if m else ""
 
-slug = datetime.now().strftime("%Y%m%d")
-post_path = POSTS_DIR / f"{slug}.html"
 
+def extract_list(key):
+    block = extract_block(key)
+    return [
+        line[1:].strip()
+        for line in block.splitlines()
+        if line.strip().startswith("-")
+    ]
+
+
+title = extract_block("タイトル")
+summary = extract_block("要約")
+conclusion = extract_block("結論")
+psychology = extract_block("相手の心理")
+actions = extract_list("具体的な行動")
+ng_actions = extract_list("避けたい行動")
+misunderstanding = extract_block("よくある勘違い")
+closing = extract_block("まとめ")
 
 # =========================
 # HTML生成
 # =========================
+slug = datetime.now().strftime("%Y%m%d")
+post_path = POSTS_DIR / f"{slug}.html"
+
 with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
     template = f.read()
 
 html = template
 html = html.replace("{{TITLE}}", title)
-html = html.replace("{{SUMMARY}}", summary)
-html = html.replace("{{CONCLUSION}}", conclusion)
+html = html.replace("{{META_DESCRIPTION}}", summary)
+html = html.replace("{{LEAD}}", summary)
+html = html.replace("{{QUESTION}}", question_text)
+html = html.replace("{{SUMMARY_ANSWER}}", conclusion)
 html = html.replace("{{PSYCHOLOGY}}", psychology)
 html = html.replace(
-    "{{ACTIONS}}",
+    "{{ACTION_LIST}}",
     "\n".join(f"<li>{a}</li>" for a in actions),
 )
 html = html.replace(
-    "{{NG_ACTIONS}}",
+    "{{NG_LIST}}",
     "\n".join(f"<li>{a}</li>" for a in ng_actions),
 )
 html = html.replace("{{MISUNDERSTANDING}}", misunderstanding)
-html = html.replace("{{CLOSING}}", closing)
-html = html.replace("{{DATE}}", datetime.now().strftime("%Y-%m-%d"))
+html = html.replace("{{CONCLUSION}}", closing)
+html = html.replace("{{DATE_JP}}", datetime.now().strftime("%Y年%m月%d日"))
+html = html.replace("{{DATE_ISO}}", datetime.now().strftime("%Y-%m-%d"))
+html = html.replace("{{PAGE_URL}}", f"https://trend9.github.io/love-auto/posts/{slug}.html")
+html = html.replace("{{CANONICAL}}", f'<link rel="canonical" href="https://trend9.github.io/love-auto/posts/{slug}.html">')
+html = html.replace("{{FAQ}}", "")
+html = html.replace("{{RELATED}}", "")
+html = html.replace("{{PREV}}", "")
+html = html.replace("{{NEXT}}", "")
 
 with open(post_path, "w", encoding="utf-8") as f:
     f.write(html)
 
-
 # =========================
 # index.json 更新
 # =========================
-index.insert(
-    0,
-    {
-        "title": title,
-        "summary": summary,
-        "slug": slug,
-        "date": datetime.now().strftime("%Y-%m-%d"),
-    },
-)
+index = load_json(INDEX_PATH, [])
+index.insert(0, {
+    "title": title,
+    "summary": summary,
+    "url": f"posts/{slug}.html",
+    "date": datetime.now().strftime("%Y-%m-%d"),
+})
 
 save_json(INDEX_PATH, index)
 
