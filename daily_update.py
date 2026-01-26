@@ -26,7 +26,7 @@ SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
 
 SITE_URL = "https://trend9.github.io/love-auto"
 
-# cron前提なので「少量・確実」
+# cron前提：少量・確実
 DAILY_GENERATE_COUNT = 1
 
 MODEL_PATH = BASE_DIR / "models" / "model.gguf"
@@ -35,7 +35,7 @@ MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 # Utils
 # =========================
 
-def safe_print(msg):
+def safe_print(msg: str):
     try:
         print(msg, flush=True)
     except Exception:
@@ -57,23 +57,32 @@ llm = Llama(
 )
 
 # =========================
-# LLM Call
+# LLM Call（JSON耐性MAX）
 # =========================
 
-def call_llm(prompt: str) -> dict:
-    r = llm(prompt, max_tokens=2048)
-    text = r["choices"][0]["text"].strip()
-
-    s = text.find("{")
-    e = text.rfind("}")
-
-    if s == -1 or e == -1 or e <= s:
-        raise RuntimeError("LLM output does not contain valid JSON")
-
+def call_llm(prompt: str) -> dict | None:
+    """
+    ・壊れたJSONは例外を投げず None
+    ・```json ``` や前後のゴミを除去
+    ・cronを絶対に止めない
+    """
     try:
-        return json.loads(text[s:e + 1])
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"JSON parse failed: {e}")
+        r = llm(prompt, max_tokens=2048)
+        raw = r["choices"][0]["text"].strip()
+
+        # コードフェンス除去
+        raw = raw.replace("```json", "").replace("```", "").strip()
+
+        s = raw.find("{")
+        e = raw.rfind("}")
+
+        if s == -1 or e == -1 or e <= s:
+            return None
+
+        return json.loads(raw[s:e + 1])
+
+    except Exception:
+        return None
 
 # =========================
 # Prompt
@@ -176,7 +185,6 @@ def main():
         safe_print("No questions generated")
         return
 
-    # 毎回ランダムで 1件（固定化しない）
     targets = random.sample(
         questions,
         k=min(DAILY_GENERATE_COUNT, len(questions))
@@ -194,6 +202,10 @@ def main():
 
         prompt = build_prompt(q["question"])
         data = call_llm(prompt)
+
+        if not data:
+            safe_print(f"[SKIP] JSON parse failed: {slug}")
+            continue
 
         html = render_html(data, q["question"], slug)
         path.write_text(html, encoding="utf-8")
