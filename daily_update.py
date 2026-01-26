@@ -3,133 +3,81 @@
 
 import json
 import re
-import random
-import hashlib
 from pathlib import Path
 from datetime import datetime
 from llama_cpp import Llama
 
 # =========================
-# Settings
+# Path
 # =========================
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-ARTICLE_DIR = DATA_DIR / "articles"
+POST_DIR = BASE_DIR / "posts"
+TEMPLATE_PATH = BASE_DIR / "post_template.html"
 QUESTION_FILE = DATA_DIR / "questions.json"
-
 MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
-ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
-
-DAILY_GENERATE_COUNT = 1
-MAX_RETRY = 15
-
-MIN_TITLE_LEN = 20
-MIN_BODY_LEN = 600
+POST_DIR.mkdir(exist_ok=True)
 
 # =========================
 # Utils
 # =========================
 
 def now():
-    return datetime.now().isoformat()
+    return datetime.now()
 
-def normalize(t: str) -> str:
-    return "".join(t.split()).lower()
+def iso(dt):
+    return dt.isoformat()
 
-def content_hash(title: str, body: str) -> str:
-    return hashlib.sha256(
-        (normalize(title) + normalize(body)).encode("utf-8")
-    ).hexdigest()
+def jp(dt):
+    return dt.strftime("%Y年%m月d日")
 
-def slugify_jp(text: str) -> str:
-    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
-    return text[:60] or "love-article"
+def safe(text):
+    return text.strip() if text else ""
 
 # =========================
 # LLM
 # =========================
 
-print("Initializing LLM...")
-
 llm = Llama(
     model_path=str(MODEL_PATH),
     n_ctx=2048,
-    temperature=0.9,
-    top_p=0.95,
-    repeat_penalty=1.15,
-    verbose=False,
+    temperature=0.8,
+    verbose=False
 )
 
-# =========================
-# Prompt
-# =========================
+PROMPT_TEMPLATE = """
+あなたはSEOに強い恋愛カウンセラーです。
 
-PROMPT = """
-以下の恋愛相談に対して、
-第三者として現実的で具体的なアドバイスをしてください。
-
-【条件】
-・抽象論は禁止
-・行動ベースで説明
+【必須条件】
+・主キーワード「{primary}」を自然に含める
+・具体例多め、抽象論禁止
 ・600文字以上
-・相談者の年齢・立場を意識する
+・以下の構成を厳守
 
-【形式】
+【構成】
 タイトル：
-本文：
-""".strip()
+要約：
+結論：
+相手の心理：
+具体的な行動：（箇条書き）
+避けたい行動：（箇条書き）
+よくある勘違い：
+まとめ：
+
+【相談内容】
+{question}
+"""
 
 # =========================
 # Parse
 # =========================
 
-def parse_article(text: str):
-    if "タイトル：" not in text or "本文：" not in text:
-        return None
-
-    title = text.split("タイトル：", 1)[1].split("本文：", 1)[0].strip()
-    body = text.split("本文：", 1)[1].strip()
-
-    if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
-        return None
-
-    return {
-        "title": title,
-        "body": body,
-        "slug": slugify_jp(title),
-        "created_at": now(),
-        "content_hash": content_hash(title, body),
-    }
-
-# =========================
-# Core
-# =========================
-
-def load_questions():
-    if not QUESTION_FILE.exists():
-        return []
-
-    return json.loads(QUESTION_FILE.read_text(encoding="utf-8"))
-
-def save_questions(data):
-    QUESTION_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
-
-def save_article(article):
-    path = ARTICLE_DIR / f"{article['slug']}.json"
-    path.write_text(
-        json.dumps(article, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
-
-def generate_one(prompt):
-    r = llm(prompt, max_tokens=1200)
-    text = r["choices"][0]["text"].strip()
-    return parse_article(text)
+def extract_block(text, label):
+    pattern = rf"{label}：([\s\S]*?)(?=\n\S+：|$)"
+    m = re.search(pattern, text)
+    return safe(m.group(1)) if m else ""
 
 # =========================
 # Main
@@ -138,36 +86,87 @@ def generate_one(prompt):
 def main():
     print("=== daily_update START ===")
 
-    questions = load_questions()
-    targets = [q for q in questions if not q.get("used")]
-
-    if not targets:
-        print("No unused questions. Exit.")
+    if not QUESTION_FILE.exists():
+        print("questions.json not found")
         return
 
-    q = targets[0]
+    questions = json.loads(QUESTION_FILE.read_text(encoding="utf-8"))
+    q = next((x for x in questions if x.get("status") == "pending"), None)
 
-    prompt = (
-        PROMPT
-        + "\n\n相談者情報：\n"
-        + f"{q['persona']['age']}歳 / {q['persona']['gender']} / {q['persona']['relationship']}\n\n"
-        + "相談内容：\n"
-        + q["question"]
+    if not q:
+        print("No pending questions")
+        return
+
+    seo = q["seo"]
+    slug = q["slug"]
+
+    prompt = PROMPT_TEMPLATE.format(
+        primary=seo["primary_keyword"],
+        question=q["question"]
     )
 
-    for _ in range(MAX_RETRY):
-        article = generate_one(prompt)
-        if not article:
-            continue
+    try:
+        res = llm(prompt, max_tokens=1500)
+        out = res["choices"][0]["text"]
+    except Exception as e:
+        print("LLM error:", e)
+        return
 
-        save_article(article)
-        q["used"] = True
-        q["used_at"] = now()
-        save_questions(questions)
+    title = extract_block(out, "タイトル")
+    lead = extract_block(out, "要約")
+    conclusion = extract_block(out, "結論")
+    psychology = extract_block(out, "相手の心理")
+    action = extract_block(out, "具体的な行動")
+    ng = extract_block(out, "避けたい行動")
+    misunderstanding = extract_block(out, "よくある勘違い")
+    summary = extract_block(out, "まとめ")
 
-        print("✔ Article generated:", article["slug"])
-        break
+    if not title or not conclusion:
+        print("Invalid LLM output")
+        return
 
+    today = now()
+    filename = f"{today.strftime('%Y-%m-%d')}-{slug}.html"
+    url = f"posts/{filename}"
+
+    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    html = template \
+        .replace("{{TITLE}}", title) \
+        .replace("{{META_DESCRIPTION}}", lead[:120]) \
+        .replace("{{DATE_ISO}}", iso(today)) \
+        .replace("{{DATE_JP}}", jp(today)) \
+        .replace("{{PAGE_URL}}", url) \
+        .replace("{{CANONICAL}}", f'<link rel="canonical" href="{url}">') \
+        .replace("{{LEAD}}", lead) \
+        .replace("{{QUESTION}}", q["question"]) \
+        .replace("{{SUMMARY_ANSWER}}", conclusion) \
+        .replace("{{PSYCHOLOGY}}", psychology) \
+        .replace("{{ACTION_LIST}}", "".join(f"<li>{x}</li>" for x in action.splitlines() if x)) \
+        .replace("{{NG_LIST}}", "".join(f"<li>{x}</li>" for x in ng.splitlines() if x)) \
+        .replace("{{MISUNDERSTANDING}}", misunderstanding) \
+        .replace("{{CONCLUSION}}", summary) \
+        .replace("{{FAQ}}", "") \
+        .replace("{{RELATED}}", "") \
+        .replace("{{PREV}}", "") \
+        .replace("{{NEXT}}", "")
+
+    (POST_DIR / filename).write_text(html, encoding="utf-8")
+
+    # 更新
+    q["status"] = "done"
+    q["used_at"] = iso(today)
+    q["title"] = title
+    q["description"] = lead[:120]
+    q["url"] = url
+    q["date"] = jp(today)
+
+    QUESTION_FILE.write_text(
+        json.dumps(questions, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+    print("✔ HTML generated:", filename)
     print("=== daily_update END ===")
 
 if __name__ == "__main__":

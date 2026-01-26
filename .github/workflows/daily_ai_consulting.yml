@@ -13,8 +13,6 @@ on:
 permissions:
   contents: write
 
-# ❌ cancel-in-progress は使わない
-# 同時実行は許可しつつ、後勝ちにする
 concurrency:
   group: daily-ai-update
   cancel-in-progress: false
@@ -25,17 +23,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # ----------------------
-      # 1. Checkout
-      # ----------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ----------------------
-      # 2. Cache pip
-      # ----------------------
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -44,62 +36,46 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # ----------------------
-      # 3. Cache LLM model
-      # ----------------------
       - name: Cache LLM model
         uses: actions/cache@v4
         with:
           path: models
           key: ${{ runner.os }}-llm-model-q4km-v1
 
-      # ----------------------
-      # 4. Install dependencies
-      # ----------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install llama-cpp-python
+          pip install llama-cpp-python requests beautifulsoup4
 
-      # ----------------------
-      # 5. Download model (only if needed)
-      # ----------------------
       - name: Download Llama model
         run: |
           if [ ! -f models/model.gguf ]; then
-            echo "⬇️ Downloading Q4 LLM model..."
             mkdir -p models
-            curl -L --retry 3 --fail -o models/model.gguf \
+            curl -L -o models/model.gguf \
               https://huggingface.co/MaziyarPanahi/Llama-3-8B-Instruct-v0.1-GGUF/resolve/main/Llama-3-8B-Instruct-v0.1.Q4_K_M.gguf
-          else
-            echo "✅ LLM model cache hit"
           fi
 
-      # ----------------------
-      # 6. Run generator
-      # ----------------------
+      # ★ 必ず先に質問生成
+      - name: Fetch questions
+        run: python question_fetcher.py
+
+      # ★ 次に記事生成
       - name: Run daily update
         env:
           PYTHONUNBUFFERED: "1"
-        run: |
-          echo "🚀 Start daily_update.py"
-          python daily_update.py
-          echo "✅ daily_update.py finished"
+        run: python daily_update.py
 
-      # ----------------------
-      # 7. Commit & push
-      # ----------------------
+      # ★ すべてpush
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add content public || true
-
+          git add .
           if git diff --cached --quiet; then
             echo "🟡 No changes to commit"
             exit 0
           fi
 
-          git commit -m "Daily update by Yui AI"
+          git commit -m "Daily AI article update"
           git push origin HEAD:main

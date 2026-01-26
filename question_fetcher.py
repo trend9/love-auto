@@ -1,42 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import requests
-import random
 import json
-import os
+import random
 import hashlib
-from bs4 import BeautifulSoup
 from datetime import datetime
 from pathlib import Path
-
-# =====================
-# 設定
-# =====================
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 
 QUESTION_PATH = DATA_DIR / "questions.json"
-USED_THEME_PATH = DATA_DIR / "used_themes.json"
-
-SEARCH_URL = "https://www.google.com/search"
-QUERY = "site:detail.chiebukuro.yahoo.co.jp 恋愛 片思い"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
-
-MAX_FETCH = 10        # 検索結果数（存在確認用）
-GENERATE_NUM = 1      # cron前提：1回1件
-
-# =====================
-# テンプレ素材
-# =====================
+USED_PATH = DATA_DIR / "used_questions.json"
 
 AGES = list(range(18, 36))
-
 GENDERS = ["女性", "男性"]
-
 PRONOUNS = {
     "女性": ["私"],
     "男性": ["僕", "俺"]
@@ -45,152 +23,113 @@ PRONOUNS = {
 RELATIONSHIPS = [
     "会社の先輩",
     "会社の後輩",
-    "同じ部署の同僚",
+    "同僚",
     "学校の先輩",
     "学校の後輩",
-    "同級生",
-    "部活の先輩",
-    "部活の後輩"
+    "同級生"
 ]
 
 EMOTIONS = [
-    "胸が苦しくなってしまいます",
-    "不安な気持ちになります",
-    "嫉妬してしまいます",
-    "気持ちが抑えられません"
+    "胸が苦しくなります",
+    "不安になります",
+    "嫉妬してしまいます"
 ]
 
 PROBLEMS = [
-    "距離を縮める方法がわかりません",
+    "距離の縮め方がわかりません",
     "どう行動すればいいかわかりません",
-    "勇気が出ずに何もできません",
-    "関係を壊してしまいそうで怖いです"
+    "脈ありか判断できません"
 ]
 
-# =====================
-# ユーティリティ
-# =====================
-
-def load_json(path: Path, default):
+def load(path, default):
     if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return default
+        return json.loads(path.read_text(encoding="utf-8"))
     return default
 
-def save_json(path: Path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
+def save(path, data):
+    path.parent.mkdir(exist_ok=True)
     path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
 
-def theme_hash(gender, relationship, problem):
-    raw = f"{gender}|{relationship}|{problem}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-# =====================
-# Google検索（存在確認のみ）
-# =====================
-
-def fetch_search_links():
-    try:
-        res = requests.get(
-            SEARCH_URL,
-            headers=HEADERS,
-            params={"q": QUERY, "num": MAX_FETCH},
-            timeout=10
-        )
-    except Exception:
-        return []
-
-    soup = BeautifulSoup(res.text, "html.parser")
-    links = []
-
-    for a in soup.select("a"):
-        href = a.get("href", "")
-        if "detail.chiebukuro.yahoo.co.jp" in href:
-            clean = href.split("&")[0].replace("/url?q=", "")
-            links.append(clean)
-
-    return list(set(links))
-
-# =====================
-# 質問生成（完全オリジナル）
-# =====================
-
-def generate_question(used_themes: set):
-    gender = random.choice(GENDERS)
-    age = random.choice(AGES)
-    pronoun = random.choice(PRONOUNS[gender])
-    relationship = random.choice(RELATIONSHIPS)
-    emotion = random.choice(EMOTIONS)
-    problem = random.choice(PROBLEMS)
-
-    h = theme_hash(gender, relationship, problem)
-    if h in used_themes:
-        return None, None
-
-    text = (
-        f"{pronoun}は{age}歳の{gender}です。"
-        f"{relationship}のことが好きで、ずっと片思いをしています。"
-        f"他の異性と話しているのを見ると{emotion}。"
-        f"しかし、{problem}。"
-        f"どのようにアプローチをすれば良いのでしょうか？"
+def make_slug(relationship, problem):
+    return (
+        relationship
+        .replace("会社の", "company-")
+        .replace("学校の", "school-")
+        .replace("同級生", "classmate")
+        .replace("先輩", "senpai")
+        .replace("後輩", "kouhai")
+        + "-"
+        + problem
+        .replace("距離の縮め方がわかりません", "how-to-close-distance")
+        .replace("どう行動すればいいかわかりません", "what-should-i-do")
+        .replace("脈ありか判断できません", "signs-of-interest")
     )
 
-    return {
-        "id": h,
-        "question": text,
-        "persona": {
-            "age": age,
-            "gender": gender,
-            "pronoun": pronoun,
-            "relationship": relationship
-        },
-        "used": False,
-        "created_at": datetime.now().isoformat()
-    }, h
-
-# =====================
-# メイン処理
-# =====================
+def make_hash(slug):
+    return hashlib.sha256(slug.encode("utf-8")).hexdigest()
 
 def main():
     print("=== question_fetcher START ===")
 
-    used_themes = set(load_json(USED_THEME_PATH, []))
-    questions = load_json(QUESTION_PATH, [])
-
-    # 検索は「世の中に相談が存在するか」の確認だけ
-    links = fetch_search_links()
-    if not links:
-        print("No source links found. Exit safely.")
-        return
+    questions = load(QUESTION_PATH, [])
+    used = set(load(USED_PATH, []))
 
     generated = 0
 
-    for _ in range(20):
-        if generated >= GENERATE_NUM:
-            break
+    for _ in range(50):
+        gender = random.choice(GENDERS)
+        age = random.choice(AGES)
+        relationship = random.choice(RELATIONSHIPS)
+        problem = random.choice(PROBLEMS)
+        emotion = random.choice(EMOTIONS)
 
-        q, h = generate_question(used_themes)
-        if not q:
+        slug = make_slug(relationship, problem)
+        qid = make_hash(slug)
+
+        if qid in used:
             continue
 
-        questions.append(q)
-        used_themes.add(h)
+        question_text = (
+            f"{PRONOUNS[gender][0]}は{age}歳の{gender}です。"
+            f"{relationship}に片思いしています。"
+            f"{emotion}。{problem}。"
+            "どうすればいいでしょうか？"
+        )
+
+        questions.append({
+            "id": qid,
+            "slug": slug,
+            "question": question_text,
+            "seo": {
+                "primary_keyword": f"{relationship} 片思い",
+                "secondary_keywords": [
+                    "距離 縮め方",
+                    "脈あり サイン",
+                    "恋愛 悩み"
+                ]
+            },
+            "persona": {
+                "age": age,
+                "gender": gender,
+                "relationship": relationship
+            },
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
+        })
+
+        used.add(qid)
         generated += 1
 
-    if generated == 0:
-        print("No unique question generated.")
-        return
+        if generated >= 5:
+            break
 
-    save_json(QUESTION_PATH, questions)
-    save_json(USED_THEME_PATH, list(used_themes))
+    save(QUESTION_PATH, questions)
+    save(USED_PATH, list(used))
 
-    print(f"Generated {generated} question(s).")
+    print(f"Generated {generated} questions")
     print("=== question_fetcher END ===")
 
 if __name__ == "__main__":
