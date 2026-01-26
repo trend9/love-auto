@@ -1,174 +1,138 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
-import traceback
 import json
+import re
 import random
+import hashlib
 from pathlib import Path
-from datetime import datetime, timezone
-from xml.etree.ElementTree import Element, SubElement, ElementTree
-
+from datetime import datetime
 from llama_cpp import Llama
-from question_generator import generate_questions
 
 # =========================
-# Paths / Settings
+# Settings
 # =========================
 
 BASE_DIR = Path(__file__).parent
 
-POST_DIR = BASE_DIR / "posts"
-TEMPLATE_PATH = BASE_DIR / "post_template.html"
-
-PUBLIC_DIR = BASE_DIR / "public"
-SITEMAP_PATH = PUBLIC_DIR / "sitemap.xml"
-
-SITE_URL = "https://trend9.github.io/love-auto"
-
-# cron前提：少量・確実
-DAILY_GENERATE_COUNT = 1
-
 MODEL_PATH = BASE_DIR / "models" / "model.gguf"
+DATA_DIR = BASE_DIR / "data"
+ARTICLE_DIR = DATA_DIR / "articles"
+
+ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
+
+DAILY_GENERATE_COUNT = 1   # ← 安定性最優先
+MAX_RETRY = 20
+
+MIN_TITLE_LEN = 20
+MIN_BODY_LEN = 600
 
 # =========================
 # Utils
 # =========================
 
-def safe_print(msg: str):
-    try:
-        print(msg, flush=True)
-    except Exception:
-        pass
+def now():
+    return datetime.now().isoformat()
+
+def normalize(t: str) -> str:
+    return "".join(t.split()).lower()
+
+def content_hash(title: str, body: str) -> str:
+    return hashlib.sha256(
+        (normalize(title) + normalize(body)).encode("utf-8")
+    ).hexdigest()
+
+def slugify_jp(text: str) -> str:
+    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
+    return text[:60] or "love-article"
 
 # =========================
-# LLM 初期化
+# LLM
 # =========================
 
-safe_print("Initializing LLM...")
+print("Initializing LLM...")
 
 llm = Llama(
     model_path=str(MODEL_PATH),
     n_ctx=2048,
     temperature=0.9,
     top_p=0.95,
-    repeat_penalty=1.1,
+    repeat_penalty=1.15,
     verbose=False,
 )
-
-# =========================
-# LLM Call（JSON耐性MAX）
-# =========================
-
-def call_llm(prompt: str) -> dict | None:
-    """
-    ・壊れたJSONは例外を投げず None
-    ・```json ``` や前後のゴミを除去
-    ・cronを絶対に止めない
-    """
-    try:
-        r = llm(prompt, max_tokens=2048)
-        raw = r["choices"][0]["text"].strip()
-
-        # コードフェンス除去
-        raw = raw.replace("```json", "").replace("```", "").strip()
-
-        s = raw.find("{")
-        e = raw.rfind("}")
-
-        if s == -1 or e == -1 or e <= s:
-            return None
-
-        return json.loads(raw[s:e + 1])
-
-    except Exception:
-        return None
 
 # =========================
 # Prompt
 # =========================
 
-def build_prompt(question: str) -> str:
-    return f"""
-あなたは日本の恋愛相談サイトの専属ライターです。
+PROMPT = """
+以下の「恋愛・人間関係の悩み相談」に対して、
+経験豊富な第三者として真剣に回答してください。
 
-【厳守ルール】
-・SEOを意識しすぎた不自然な文章は禁止
-・人間が本音で書いたような自然文体
-・一般論・テンプレ回答は禁止
-・h1〜h3構成を意識
-・JSON以外は絶対に出力しない
+【条件】
+・抽象論・精神論は禁止
+・具体的な行動・考え方を示す
+・600文字以上
+・読み物として成立させる
 
-出力形式：
-{{
-  "title": "",
-  "meta_description": "",
-  "lead": "",
-  "summary_answer": "",
-  "psychology": "",
-  "actions": ["", "", ""],
-  "ng": ["", "", ""],
-  "misunderstanding": "",
-  "conclusion": ""
-}}
-
-相談内容：
-{question}
+【形式】
+タイトル：
+本文：
 """.strip()
 
 # =========================
-# HTML Render
+# Parse
 # =========================
 
-def render_html(data: dict, question: str, slug: str) -> str:
-    tpl = TEMPLATE_PATH.read_text(encoding="utf-8")
-    now = datetime.now(timezone.utc)
+def parse_article(text: str) -> dict | None:
+    if "タイトル：" not in text or "本文：" not in text:
+        return None
 
-    html = tpl
-    html = html.replace("{{TITLE}}", data["title"])
-    html = html.replace("{{META_DESCRIPTION}}", data["meta_description"])
-    html = html.replace("{{LEAD}}", data["lead"])
-    html = html.replace("{{QUESTION}}", question)
-    html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
-    html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
-    html = html.replace(
-        "{{ACTION_LIST}}",
-        "".join(f"<li>{x}</li>" for x in data["actions"])
-    )
-    html = html.replace(
-        "{{NG_LIST}}",
-        "".join(f"<li>{x}</li>" for x in data["ng"])
-    )
-    html = html.replace("{{MISUNDERSTANDING}}", data["misunderstanding"])
-    html = html.replace("{{CONCLUSION}}", data["conclusion"])
-    html = html.replace("{{DATE_JP}}", now.astimezone().strftime("%Y年%m月%d日"))
-    html = html.replace("{{DATE_ISO}}", now.isoformat())
-    html = html.replace("{{PAGE_URL}}", f"{SITE_URL}/posts/{slug}.html")
-    html = html.replace(
-        "{{CANONICAL}}",
-        f'<link rel="canonical" href="{SITE_URL}/posts/{slug}.html">'
-    )
+    try:
+        title = text.split("タイトル：", 1)[1].split("本文：", 1)[0].strip()
+        body = text.split("本文：", 1)[1].strip()
+    except Exception:
+        return None
 
-    return html
+    if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
+        return None
+
+    return {
+        "title": title,
+        "body": body,
+        "slug": slugify_jp(title),
+        "created_at": now(),
+        "content_hash": content_hash(title, body),
+    }
 
 # =========================
-# Sitemap
+# Core
 # =========================
 
-def generate_sitemap():
-    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+def generate_one(prompt: str) -> dict | None:
+    try:
+        r = llm(prompt, max_tokens=1200)
+        text = r["choices"][0]["text"].strip()
+    except Exception:
+        return None
 
-    for html_file in sorted(POST_DIR.glob("*.html")):
-        slug = html_file.stem
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{SITE_URL}/posts/{slug}.html"
-        SubElement(url, "lastmod").text = datetime.now(timezone.utc).isoformat()
+    return parse_article(text)
 
-    PUBLIC_DIR.mkdir(exist_ok=True)
-    ElementTree(urlset).write(
-        SITEMAP_PATH,
-        encoding="utf-8",
-        xml_declaration=True
+def load_questions() -> list[str]:
+    q_file = DATA_DIR / "questions.json"
+    if not q_file.exists():
+        return []
+
+    try:
+        return json.loads(q_file.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+def save_article(article: dict):
+    path = ARTICLE_DIR / f"{article['slug']}.json"
+    path.write_text(
+        json.dumps(article, ensure_ascii=False, indent=2),
+        encoding="utf-8"
     )
 
 # =========================
@@ -176,52 +140,40 @@ def generate_sitemap():
 # =========================
 
 def main():
-    safe_print("=== daily_update START ===")
+    print("=== daily_update START ===")
 
-    POST_DIR.mkdir(exist_ok=True)
-
-    questions = generate_questions()
+    questions = load_questions()
     if not questions:
-        safe_print("No questions generated")
+        print("No questions. Exit normally.")
         return
 
-    targets = random.sample(
-        questions,
-        k=min(DAILY_GENERATE_COUNT, len(questions))
-    )
+    random.shuffle(questions)
 
-    for q in targets:
-        slug = q["slug"]
-        path = POST_DIR / f"{slug}.html"
+    generated = 0
+    used_hashes = set()
 
-        if path.exists():
-            safe_print(f"[SKIP] {slug}.html already exists")
-            continue
+    for q in questions:
+        if generated >= DAILY_GENERATE_COUNT:
+            break
 
-        safe_print(f"[GEN] {slug}")
+        prompt = PROMPT + "\n\n相談内容：\n" + q
+        print("[GEN]", q[:40])
 
-        prompt = build_prompt(q["question"])
-        data = call_llm(prompt)
+        for _ in range(MAX_RETRY):
+            article = generate_one(prompt)
+            if not article:
+                continue
 
-        if not data:
-            safe_print(f"[SKIP] JSON parse failed: {slug}")
-            continue
+            if article["content_hash"] in used_hashes:
+                continue
 
-        html = render_html(data, q["question"], slug)
-        path.write_text(html, encoding="utf-8")
+            save_article(article)
+            used_hashes.add(article["content_hash"])
+            generated += 1
+            print("✔ Saved:", article["slug"])
+            break
 
-        safe_print(f"[CREATE] {slug}.html")
-
-    generate_sitemap()
-    safe_print("=== daily_update END ===")
-
-# =========================
-# Entrypoint
-# =========================
+    print(f"=== daily_update END ({generated} articles) ===")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        traceback.print_exc()
-        sys.exit(1)
+    main()
