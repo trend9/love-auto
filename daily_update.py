@@ -1,10 +1,8 @@
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
-import subprocess
-import sys
+from llama_cpp import Llama
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -15,6 +13,12 @@ QUESTIONS_PATH = DATA_DIR / "questions.json"
 USED_PATH = DATA_DIR / "used_questions.json"
 
 POSTS_DIR.mkdir(exist_ok=True)
+
+llm = Llama(
+    model_path="models/llama-q4km.gguf",
+    n_ctx=2048,
+    n_threads=4,
+)
 
 def load_json(path, default):
     if not path.exists():
@@ -30,13 +34,13 @@ def slugify(text):
     text = re.sub(r"[^\wぁ-んァ-ン一-龥ー]+", "", text)
     return text[:40]
 
-def call_llm(prompt):
-    proc = subprocess.run(
-        ["./llama", "-p", prompt],
-        capture_output=True,
-        text=True,
+def generate(prompt: str) -> str:
+    res = llm(
+        prompt,
+        max_tokens=1200,
+        stop=["</json>"],
     )
-    return proc.stdout.strip()
+    return res["choices"][0]["text"].strip()
 
 def main():
     print("=== daily_update START ===")
@@ -45,41 +49,40 @@ def main():
     used = load_json(USED_PATH, [])
 
     if not questions:
-        print("No questions. Exit.")
+        print("No unused questions. Exit.")
         return
 
-    # 最新1件のみ処理
     q = questions.pop(0)
 
     if not isinstance(q, dict) or "question" not in q:
         print("Invalid question format. Abort.")
         return
 
-    question_text = q["question"]
+    question = q["question"]
 
-    today = datetime.now()
-    date_str = today.strftime("%Y-%m-%d")
-    date_iso = today.isoformat()
-    date_jp = today.strftime("%Y年%m月%d日")
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    date_iso = now.isoformat()
+    date_jp = now.strftime("%Y年%m月%d日")
 
-    slug = slugify(question_text)
+    slug = slugify(question)
     filename = f"{date_str}-{slug}.html"
     post_path = POSTS_DIR / filename
 
     prompt = f"""
-あなたは日本語専門の恋愛相談ライターです。
+あなたは日本語専門の恋愛相談記事作成AIです。
 
 【絶対ルール】
 ・英語禁止
-・翻訳文、Translation、英語要約を出力しない
+・翻訳文禁止
 ・JSONのみ出力
-・装飾不要
-・自然で丁寧な日本語
+・説明文、前置き禁止
+・自然でSEO向けの日本語
 
-【入力相談】
-{question_text}
+【相談内容】
+{question}
 
-【出力JSON形式】
+【出力形式（厳守）】
 {{
   "title": "",
   "lead": "",
@@ -93,7 +96,7 @@ def main():
 }}
 """
 
-    raw = call_llm(prompt)
+    raw = generate(prompt)
 
     try:
         data = json.loads(raw)
@@ -109,7 +112,7 @@ def main():
     html = html.replace("{{DATE_ISO}}", date_iso)
     html = html.replace("{{DATE_JP}}", date_jp)
     html = html.replace("{{LEAD}}", data["lead"])
-    html = html.replace("{{QUESTION}}", question_text)
+    html = html.replace("{{QUESTION}}", question)
     html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
     html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
     html = html.replace(
