@@ -3,14 +3,15 @@
 
 import json
 import re
-import random
 import hashlib
 from pathlib import Path
 from datetime import datetime
 from llama_cpp import Llama
 
+from question_fetcher import fetch_questions
+
 # =========================
-# Settings
+# Paths / Settings
 # =========================
 
 BASE_DIR = Path(__file__).parent
@@ -21,8 +22,8 @@ ARTICLE_DIR = DATA_DIR / "articles"
 
 ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
 
-DAILY_GENERATE_COUNT = 1   # ← 安定性最優先
-MAX_RETRY = 20
+# cron前提：必ず1本
+DAILY_GENERATE_COUNT = 1
 
 MIN_TITLE_LEN = 20
 MIN_BODY_LEN = 600
@@ -55,9 +56,9 @@ print("Initializing LLM...")
 llm = Llama(
     model_path=str(MODEL_PATH),
     n_ctx=2048,
-    temperature=0.9,
+    temperature=0.85,
     top_p=0.95,
-    repeat_penalty=1.15,
+    repeat_penalty=1.1,
     verbose=False,
 )
 
@@ -65,19 +66,26 @@ llm = Llama(
 # Prompt
 # =========================
 
-PROMPT = """
-以下の「恋愛・人間関係の悩み相談」に対して、
-経験豊富な第三者として真剣に回答してください。
+def build_prompt(question: str) -> str:
+    return f"""
+以下は、実際の恋愛相談です。
+相談者の立場・年齢・人称を尊重しながら、
+読み物として成立する「本気の回答記事」を書いてください。
 
-【条件】
-・抽象論・精神論は禁止
-・具体的な行動・考え方を示す
+【重要ルール】
+・説教・精神論・一般論は禁止
+・相談者の感情に寄り添う
+・「あなたの場合は〜」と個別化する
 ・600文字以上
-・読み物として成立させる
+・人称は本文内で自然に言及する
+・出力は必ず下記形式のみ
 
-【形式】
+【出力形式】
 タイトル：
 本文：
+
+【相談内容】
+{question}
 """.strip()
 
 # =========================
@@ -109,24 +117,16 @@ def parse_article(text: str) -> dict | None:
 # Core
 # =========================
 
-def generate_one(prompt: str) -> dict | None:
+def generate_article(question: str) -> dict | None:
+    prompt = build_prompt(question)
+
     try:
-        r = llm(prompt, max_tokens=1200)
+        r = llm(prompt, max_tokens=1300)
         text = r["choices"][0]["text"].strip()
     except Exception:
         return None
 
     return parse_article(text)
-
-def load_questions() -> list[str]:
-    q_file = DATA_DIR / "questions.json"
-    if not q_file.exists():
-        return []
-
-    try:
-        return json.loads(q_file.read_text(encoding="utf-8"))
-    except Exception:
-        return []
 
 def save_article(article: dict):
     path = ARTICLE_DIR / f"{article['slug']}.json"
@@ -142,38 +142,34 @@ def save_article(article: dict):
 def main():
     print("=== daily_update START ===")
 
-    questions = load_questions()
+    questions = fetch_questions()
     if not questions:
         print("No questions. Exit normally.")
         return
 
-    random.shuffle(questions)
-
     generated = 0
-    used_hashes = set()
 
     for q in questions:
         if generated >= DAILY_GENERATE_COUNT:
             break
 
-        prompt = PROMPT + "\n\n相談内容：\n" + q
-        print("[GEN]", q[:40])
+        question_text = q["question"]
+        print("[GEN]", question_text[:40])
 
-        for _ in range(MAX_RETRY):
-            article = generate_one(prompt)
-            if not article:
-                continue
+        article = generate_article(question_text)
+        if not article:
+            print("✖ Generation failed")
+            continue
 
-            if article["content_hash"] in used_hashes:
-                continue
+        save_article(article)
+        generated += 1
+        print("✔ Saved:", article["slug"])
 
-            save_article(article)
-            used_hashes.add(article["content_hash"])
-            generated += 1
-            print("✔ Saved:", article["slug"])
-            break
+    print(f"=== daily_update END ({generated} article) ===")
 
-    print(f"=== daily_update END ({generated} articles) ===")
+# =========================
+# Entrypoint
+# =========================
 
 if __name__ == "__main__":
     main()
