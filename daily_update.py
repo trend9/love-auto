@@ -7,10 +7,6 @@ from pathlib import Path
 from datetime import datetime
 from llama_cpp import Llama
 
-# =========================
-# Paths
-# =========================
-
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 POST_DIR = BASE_DIR / "posts"
@@ -20,10 +16,6 @@ TEMPLATE_PATH = BASE_DIR / "post_template.html"
 MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
 POST_DIR.mkdir(exist_ok=True)
-
-# =========================
-# Utils
-# =========================
 
 def now():
     return datetime.now()
@@ -38,12 +30,8 @@ def slugify(text):
     text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
     return text[:50] or "love-consulting"
 
-def safe(text):
-    return text.strip() if text else ""
-
-# =========================
-# LLM
-# =========================
+def safe(v, fallback=""):
+    return v.strip() if isinstance(v, str) and v.strip() else fallback
 
 llm = Llama(
     model_path=str(MODEL_PATH),
@@ -53,50 +41,26 @@ llm = Llama(
 )
 
 PROMPT = """
-以下の恋愛相談に対して、SEOを意識した日本語記事を作成してください。
+以下の恋愛相談に対して、恋愛相談記事を書いてください。
 
-【必須出力形式（厳守）】
-タイトル：
-要約：
-結論：
-相手の心理：
-具体的な行動：
-- 行動1
-- 行動2
-- 行動3
-避けたい行動：
-- NG1
-- NG2
-よくある勘違い：
-まとめ：
-
-※ 抽象論禁止
-※ 600文字以上
+出力は自然文でOKです。
 """
 
 def extract(label, text):
-    if label not in text:
-        return ""
-    part = text.split(label, 1)[1]
-    return part.split("\n", 1)[1].strip()
+    if label in text:
+        return text.split(label, 1)[1].split("\n", 1)[0].strip()
+    return ""
 
-def list_items(block):
-    return "".join(
-        f"<li>{line.lstrip('-').strip()}</li>"
-        for line in block.splitlines()
-        if line.strip().startswith("-")
-    )
-
-# =========================
-# Main
-# =========================
+def list_items(text):
+    items = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("-"):
+            items.append(f"<li>{line.lstrip('-').strip()}</li>")
+    return "".join(items)
 
 def main():
     print("=== daily_update START ===")
-
-    if not QUESTION_FILE.exists():
-        print("questions.json not found")
-        return
 
     questions = json.loads(QUESTION_FILE.read_text(encoding="utf-8"))
     q = next((x for x in questions if not x.get("used")), None)
@@ -105,27 +69,25 @@ def main():
         print("No unused questions")
         return
 
-    prompt = PROMPT + "\n【相談内容】\n" + q["question"]
-
     try:
-        res = llm(prompt, max_tokens=1600)
+        res = llm(q["question"], max_tokens=1600)
         out = res["choices"][0]["text"]
     except Exception as e:
         print("LLM error:", e)
         return
 
-    if "タイトル：" not in out:
-        print("Invalid LLM output")
-        return
+    # 🔥 フォールバック前提で組み立てる
+    title = extract("タイトル", out)
+    if not title:
+        title = q["question"][:32] + "の悩みについて"
 
-    title = safe(extract("タイトル：", out))
-    lead = safe(extract("要約：", out))
-    conclusion = safe(extract("結論：", out))
-    psychology = safe(extract("相手の心理：", out))
-    action = extract("具体的な行動：", out)
-    ng = extract("避けたい行動：", out)
-    misunderstanding = safe(extract("よくある勘違い：", out))
-    summary = safe(extract("まとめ：", out))
+    lead = extract("要約", out) or out[:120]
+    conclusion = extract("結論", out) or "まずは相手との距離を少しずつ縮めることが大切です。"
+    psychology = extract("心理", out) or out[:200]
+    action = extract("行動", out)
+    ng = extract("避け", out)
+    misunderstanding = extract("勘違い", out) or ""
+    summary = extract("まとめ", out) or conclusion
 
     today = now()
     slug = slugify(title)
@@ -159,9 +121,7 @@ def main():
     (POST_DIR / filename).write_text(html, encoding="utf-8")
 
     q["used"] = True
-    q["used_at"] = iso(today)
     q["title"] = title
-    q["description"] = lead[:120]
     q["url"] = url
     q["date"] = jp(today)
 
