@@ -1,137 +1,192 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import json
+import os
 import re
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
 from llama_cpp import Llama
 
-BASE_DIR = Path(__file__).parent
+
+print("=== daily_update START ===")
+
+# =========================
+# パス定義
+# =========================
+BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-POST_DIR = BASE_DIR / "posts"
-
-QUESTION_FILE = DATA_DIR / "questions.json"
+POSTS_DIR = BASE_DIR / "posts"
 TEMPLATE_PATH = BASE_DIR / "post_template.html"
-MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
-POST_DIR.mkdir(exist_ok=True)
+QUESTIONS_PATH = DATA_DIR / "used_questions.json"
+INDEX_PATH = BASE_DIR / "index.json"
 
-def now():
-    return datetime.now()
+POSTS_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
-def iso(dt):
-    return dt.isoformat()
 
-def jp(dt):
-    return dt.strftime("%Y年%m月%d日")
-
-def slugify(text):
-    text = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", text)
-    return text[:50] or "love-consulting"
-
-def safe(v, fallback=""):
-    return v.strip() if isinstance(v, str) and v.strip() else fallback
-
+# =========================
+# LLM 初期化
+# =========================
 llm = Llama(
-    model_path=str(MODEL_PATH),
+    model_path="./models/model.gguf",
     n_ctx=2048,
-    temperature=0.8,
-    verbose=False
+    n_threads=4,
+    verbose=False,
 )
 
 PROMPT = """
-以下の恋愛相談に対して、恋愛相談記事を書いてください。
+以下の恋愛相談に対して、日本語のみで恋愛相談記事を書いてください。
+英語・ローマ字・翻訳文は禁止です。
 
-出力は自然文でOKです。
+【必須条件】
+・全て日本語
+・SEOを意識した丁寧な文章
+・各項目は必ず1文以上書く
+・出力形式を厳守する
+
+【出力フォーマット】
+タイトル：
+要約：
+結論：
+相手の心理：
+具体的な行動：
+- 行動1
+- 行動2
+- 行動3
+避けたい行動：
+- NG行動1
+- NG行動2
+よくある勘違い：
+まとめ：
+
+【相談内容】
 """
 
-def extract(label, text):
-    if label in text:
-        return text.split(label, 1)[1].split("\n", 1)[0].strip()
-    return ""
 
-def list_items(text):
+# =========================
+# ユーティリティ
+# =========================
+def load_json(path, default):
+    if not path.exists():
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def extract_section(text, key):
+    pattern = rf"{key}：(.+?)(?=\n\S+：|\Z)"
+    m = re.search(pattern, text, re.S)
+    return m.group(1).strip() if m else ""
+
+
+def extract_list(text, key):
+    block = extract_section(text, key)
     items = []
-    for line in text.splitlines():
+    for line in block.splitlines():
         line = line.strip()
         if line.startswith("-"):
-            items.append(f"<li>{line.lstrip('-').strip()}</li>")
-    return "".join(items)
+            items.append(line[1:].strip())
+    return items
 
-def main():
-    print("=== daily_update START ===")
 
-    questions = json.loads(QUESTION_FILE.read_text(encoding="utf-8"))
-    q = next((x for x in questions if not x.get("used")), None)
+# =========================
+# データ読み込み
+# =========================
+questions = load_json(QUESTIONS_PATH, [])
+if not questions:
+    raise RuntimeError("used_questions.json が空です")
 
-    if not q:
-        print("No unused questions")
-        return
+question = questions[-1]["question"]
 
-    try:
-        res = llm(q["question"], max_tokens=1600)
-        out = res["choices"][0]["text"]
-    except Exception as e:
-        print("LLM error:", e)
-        return
+index = load_json(INDEX_PATH, [])
 
-    # 🔥 フォールバック前提で組み立てる
-    title = extract("タイトル", out)
-    if not title:
-        title = q["question"][:32] + "の悩みについて"
 
-    lead = extract("要約", out) or out[:120]
-    conclusion = extract("結論", out) or "まずは相手との距離を少しずつ縮めることが大切です。"
-    psychology = extract("心理", out) or out[:200]
-    action = extract("行動", out)
-    ng = extract("避け", out)
-    misunderstanding = extract("勘違い", out) or ""
-    summary = extract("まとめ", out) or conclusion
+# =========================
+# LLM 実行
+# =========================
+res = llm(
+    PROMPT + question,
+    max_tokens=1600,
+)
 
-    today = now()
-    slug = slugify(title)
-    filename = f"{today.strftime('%Y-%m-%d')}-{slug}.html"
-    url = f"posts/{filename}"
+output = res["choices"][0]["text"].strip()
 
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+required_keys = [
+    "タイトル",
+    "要約",
+    "結論",
+    "相手の心理",
+    "具体的な行動",
+    "避けたい行動",
+    "よくある勘違い",
+    "まとめ",
+]
 
-    html = (
-        template
-        .replace("{{TITLE}}", title)
-        .replace("{{META_DESCRIPTION}}", lead[:120])
-        .replace("{{DATE_ISO}}", iso(today))
-        .replace("{{DATE_JP}}", jp(today))
-        .replace("{{PAGE_URL}}", url)
-        .replace("{{CANONICAL}}", f'<link rel="canonical" href="{url}">')
-        .replace("{{LEAD}}", lead)
-        .replace("{{QUESTION}}", q["question"])
-        .replace("{{SUMMARY_ANSWER}}", conclusion)
-        .replace("{{PSYCHOLOGY}}", psychology)
-        .replace("{{ACTION_LIST}}", list_items(action))
-        .replace("{{NG_LIST}}", list_items(ng))
-        .replace("{{MISUNDERSTANDING}}", misunderstanding)
-        .replace("{{CONCLUSION}}", summary)
-        .replace("{{RELATED}}", "")
-        .replace("{{PREV}}", "")
-        .replace("{{NEXT}}", "")
-        .replace("{{FAQ}}", "")
-    )
+if not all(k + "：" in output for k in required_keys):
+    raise RuntimeError("Invalid LLM output")
 
-    (POST_DIR / filename).write_text(html, encoding="utf-8")
 
-    q["used"] = True
-    q["title"] = title
-    q["url"] = url
-    q["date"] = jp(today)
+# =========================
+# 各要素抽出
+# =========================
+title = extract_section(output, "タイトル")
+summary = extract_section(output, "要約")
+conclusion = extract_section(output, "結論")
+psychology = extract_section(output, "相手の心理")
+actions = extract_list(output, "具体的な行動")
+ng_actions = extract_list(output, "避けたい行動")
+misunderstanding = extract_section(output, "よくある勘違い")
+closing = extract_section(output, "まとめ")
 
-    QUESTION_FILE.write_text(
-        json.dumps(questions, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
+slug = datetime.now().strftime("%Y%m%d")
+post_path = POSTS_DIR / f"{slug}.html"
 
-    print("✔ HTML generated:", filename)
-    print("=== daily_update END ===")
 
-if __name__ == "__main__":
-    main()
+# =========================
+# HTML生成
+# =========================
+with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+    template = f.read()
+
+html = template
+html = html.replace("{{TITLE}}", title)
+html = html.replace("{{SUMMARY}}", summary)
+html = html.replace("{{CONCLUSION}}", conclusion)
+html = html.replace("{{PSYCHOLOGY}}", psychology)
+html = html.replace(
+    "{{ACTIONS}}",
+    "\n".join(f"<li>{a}</li>" for a in actions),
+)
+html = html.replace(
+    "{{NG_ACTIONS}}",
+    "\n".join(f"<li>{a}</li>" for a in ng_actions),
+)
+html = html.replace("{{MISUNDERSTANDING}}", misunderstanding)
+html = html.replace("{{CLOSING}}", closing)
+html = html.replace("{{DATE}}", datetime.now().strftime("%Y-%m-%d"))
+
+with open(post_path, "w", encoding="utf-8") as f:
+    f.write(html)
+
+
+# =========================
+# index.json 更新
+# =========================
+index.insert(
+    0,
+    {
+        "title": title,
+        "summary": summary,
+        "slug": slug,
+        "date": datetime.now().strftime("%Y-%m-%d"),
+    },
+)
+
+save_json(INDEX_PATH, index)
+
+print("=== daily_update END ===")
