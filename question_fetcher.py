@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
 import random
+import json
 import hashlib
 from datetime import datetime
 from pathlib import Path
@@ -16,17 +16,13 @@ USED_PATH = DATA_DIR / "used_questions.json"
 AGES = list(range(18, 36))
 GENDERS = ["女性", "男性"]
 PRONOUNS = {
-    "女性": ["私"],
-    "男性": ["僕", "俺"]
+    "女性": "私",
+    "男性": "僕"
 }
 
 RELATIONSHIPS = [
-    "会社の先輩",
-    "会社の後輩",
-    "同僚",
-    "学校の先輩",
-    "学校の後輩",
-    "同級生"
+    "会社の先輩", "会社の後輩", "同僚",
+    "学校の先輩", "学校の後輩", "同級生"
 ]
 
 EMOTIONS = [
@@ -37,8 +33,7 @@ EMOTIONS = [
 
 PROBLEMS = [
     "距離の縮め方がわかりません",
-    "どう行動すればいいかわかりません",
-    "脈ありか判断できません"
+    "どう行動すればいいかわかりません"
 ]
 
 def load(path, default):
@@ -53,83 +48,48 @@ def save(path, data):
         encoding="utf-8"
     )
 
-def make_slug(relationship, problem):
-    return (
-        relationship
-        .replace("会社の", "company-")
-        .replace("学校の", "school-")
-        .replace("同級生", "classmate")
-        .replace("先輩", "senpai")
-        .replace("後輩", "kouhai")
-        + "-"
-        + problem
-        .replace("距離の縮め方がわかりません", "how-to-close-distance")
-        .replace("どう行動すればいいかわかりません", "what-should-i-do")
-        .replace("脈ありか判断できません", "signs-of-interest")
-    )
-
-def make_hash(slug):
-    return hashlib.sha256(slug.encode("utf-8")).hexdigest()
+def make_id(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 def main():
     print("=== question_fetcher START ===")
 
     questions = load(QUESTION_PATH, [])
-    used = set(load(USED_PATH, []))
+    used_ids = set(load(USED_PATH, []))
 
-    generated = 0
-
-    for _ in range(50):
+    for _ in range(30):
         gender = random.choice(GENDERS)
         age = random.choice(AGES)
-        relationship = random.choice(RELATIONSHIPS)
-        problem = random.choice(PROBLEMS)
+        relation = random.choice(RELATIONSHIPS)
         emotion = random.choice(EMOTIONS)
-
-        slug = make_slug(relationship, problem)
-        qid = make_hash(slug)
-
-        if qid in used:
-            continue
+        problem = random.choice(PROBLEMS)
 
         question_text = (
-            f"{PRONOUNS[gender][0]}は{age}歳の{gender}です。"
-            f"{relationship}に片思いしています。"
+            f"{PRONOUNS[gender]}は{age}歳の{gender}です。"
+            f"{relation}に片思いしています。"
             f"{emotion}。{problem}。"
             "どうすればいいでしょうか？"
         )
 
+        qid = make_id(question_text)
+
+        if qid in used_ids:
+            continue
+
         questions.append({
             "id": qid,
-            "slug": slug,
             "question": question_text,
-            "seo": {
-                "primary_keyword": f"{relationship} 片思い",
-                "secondary_keywords": [
-                    "距離 縮め方",
-                    "脈あり サイン",
-                    "恋愛 悩み"
-                ]
-            },
-            "persona": {
-                "age": age,
-                "gender": gender,
-                "relationship": relationship
-            },
-            "status": "pending",
+            "used": False,
             "created_at": datetime.now().isoformat()
         })
 
-        used.add(qid)
-        generated += 1
-
-        if generated >= 5:
-            break
+        used_ids.add(qid)
+        break
 
     save(QUESTION_PATH, questions)
-    save(USED_PATH, list(used))
+    save(USED_PATH, list(used_ids))
 
-    print(f"Generated {generated} questions")
+    print("✔ question added")
     print("=== question_fetcher END ===")
 
 if __name__ == "__main__":
