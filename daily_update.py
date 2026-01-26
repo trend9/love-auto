@@ -1,151 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
 import json
-import re
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
-from llama_cpp import Llama
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-POSTS_DIR = BASE_DIR / "posts"
-TEMPLATE_PATH = BASE_DIR / "post_template.html"
+QUESTION_FILE = BASE_DIR / "data" / "questions.json"
+OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-QUESTIONS_PATH = DATA_DIR / "questions.json"
-USED_PATH = DATA_DIR / "used_questions.json"
+# ===== LLM設定 =====
+LLAMA_BIN = BASE_DIR / "llama"          # llama.cpp バイナリ（無い環境も想定）
+MODEL_PATH = BASE_DIR / "models" / "llama-q4km.gguf"
 
-POSTS_DIR.mkdir(exist_ok=True)
+# ===== ユーティリティ =====
+def log(msg):
+    print(f"[daily_update] {msg}", flush=True)
 
-llm = Llama(
-    model_path="models/llama-q4km.gguf",
-    n_ctx=2048,
-    n_threads=4,
-)
+def load_questions():
+    if not QUESTION_FILE.exists():
+        log("questions.json not found")
+        return []
 
-def load_json(path, default):
-    if not path.exists():
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(QUESTION_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data.get("questions", [])
 
-def slugify(text):
-    text = re.sub(r"[^\wぁ-んァ-ン一-龥ー]+", "", text)
-    return text[:40]
+def save_article(slug: str, html: str):
+    out = OUTPUT_DIR / f"{slug}.html"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    log(f"saved: {out.name}")
 
-def generate(prompt: str) -> str:
-    res = llm(
-        prompt,
-        max_tokens=1200,
-        stop=["</json>"],
-    )
-    return res["choices"][0]["text"].strip()
+# ===== LLM呼び出し =====
+def call_llm(prompt: str) -> str:
+    """
+    llama.cpp が存在しない / model が無い場合でも
+    CI を落とさないための安全実装
+    """
 
-def main():
-    print("=== daily_update START ===")
+    if not LLAMA_BIN.exists():
+        log("llama binary not found -> fallback mode")
+        return fallback_response(prompt)
 
-    questions = load_json(QUESTIONS_PATH, [])
-    used = load_json(USED_PATH, [])
-
-    if not questions:
-        print("No unused questions. Exit.")
-        return
-
-    q = questions.pop(0)
-
-    if not isinstance(q, dict) or "question" not in q:
-        print("Invalid question format. Abort.")
-        return
-
-    question = q["question"]
-
-    now = datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    date_iso = now.isoformat()
-    date_jp = now.strftime("%Y年%m月%d日")
-
-    slug = slugify(question)
-    filename = f"{date_str}-{slug}.html"
-    post_path = POSTS_DIR / filename
-
-    prompt = f"""
-あなたは日本語専門の恋愛相談記事作成AIです。
-
-【絶対ルール】
-・英語禁止
-・翻訳文禁止
-・JSONのみ出力
-・説明文、前置き禁止
-・自然でSEO向けの日本語
-
-【相談内容】
-{question}
-
-【出力形式（厳守）】
-{{
-  "title": "",
-  "lead": "",
-  "summary_answer": "",
-  "psychology": "",
-  "actions": ["", "", ""],
-  "ng_actions": ["", ""],
-  "misunderstanding": "",
-  "conclusion": "",
-  "meta_description": ""
-}}
-"""
-
-    raw = generate(prompt)
+    if not MODEL_PATH.exists():
+        log("model file not found -> fallback mode")
+        return fallback_response(prompt)
 
     try:
-        data = json.loads(raw)
-    except Exception:
-        print("Invalid LLM output. Abort.")
+        proc = subprocess.run(
+            [
+                str(LLAMA_BIN),
+                "-m", str(MODEL_PATH),
+                "-p", prompt,
+                "--ctx-size", "2048",
+                "--temp", "0.7"
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return proc.stdout.strip()
+
+    except Exception as e:
+        log(f"llm error: {e}")
+        return fallback_response(prompt)
+
+def fallback_response(prompt: str) -> str:
+    """
+    LLMが使えない場合でも
+    SEO構造HTMLを必ず返す
+    """
+
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>【自動生成】{prompt[:30]}</title>
+<meta name="description" content="{prompt[:60]}">
+</head>
+<body>
+<article>
+<h1>{prompt}</h1>
+
+<section>
+<h2>結論</h2>
+<p>このページは現在AI生成のフォールバックモードで生成されています。</p>
+</section>
+
+<section>
+<h2>理由</h2>
+<p>LLM実行環境が未構築、もしくはモデルファイルが存在しないためです。</p>
+</section>
+
+<section>
+<h2>対策</h2>
+<ul>
+<li>llama.cpp バイナリの配置</li>
+<li>GGUFモデルの配置</li>
+<li>CI環境変数の見直し</li>
+</ul>
+</section>
+
+</article>
+</body>
+</html>
+"""
+
+# ===== メイン処理 =====
+def main():
+    log("=== daily_update START ===")
+
+    questions = load_questions()
+    if not questions:
+        log("no questions found")
         return
 
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    for q in questions:
+        qid = q.get("id")
+        title = q.get("title")
 
-    html = template
-    html = html.replace("{{TITLE}}", data["title"])
-    html = html.replace("{{META_DESCRIPTION}}", data["meta_description"])
-    html = html.replace("{{DATE_ISO}}", date_iso)
-    html = html.replace("{{DATE_JP}}", date_jp)
-    html = html.replace("{{LEAD}}", data["lead"])
-    html = html.replace("{{QUESTION}}", question)
-    html = html.replace("{{SUMMARY_ANSWER}}", data["summary_answer"])
-    html = html.replace("{{PSYCHOLOGY}}", data["psychology"])
-    html = html.replace(
-        "{{ACTION_LIST}}",
-        "\n".join(f"<li>{a}</li>" for a in data["actions"])
-    )
-    html = html.replace(
-        "{{NG_LIST}}",
-        "\n".join(f"<li>{a}</li>" for a in data["ng_actions"])
-    )
-    html = html.replace("{{MISUNDERSTANDING}}", data["misunderstanding"])
-    html = html.replace("{{CONCLUSION}}", data["conclusion"])
-    html = html.replace("{{FAQ}}", "")
-    html = html.replace(
-        "{{CANONICAL}}",
-        f'<link rel="canonical" href="https://trend9.github.io/love-auto/posts/{filename}">'
-    )
-    html = html.replace(
-        "{{PAGE_URL}}",
-        f"https://trend9.github.io/love-auto/posts/{filename}"
-    )
-    html = html.replace("{{RELATED}}", "")
-    html = html.replace("{{PREV}}", "")
-    html = html.replace("{{NEXT}}", "")
+        if not qid or not title:
+            continue
 
-    post_path.write_text(html, encoding="utf-8")
+        slug = f"q{qid}_{datetime.now().strftime('%Y%m%d')}"
 
-    used.append(q)
-    save_json(USED_PATH, used)
-    save_json(QUESTIONS_PATH, questions)
+        prompt = f"""
+以下の質問に対して、
+SEO最適化されたHTML記事を全文で生成してください。
 
-    print(f"✔ HTML generated: {filename}")
-    print("=== daily_update END ===")
+条件：
+- <article> 構造
+- h1は1つのみ
+- h2,h3を論理的に使用
+- 結論を最初に書く
+- 日本語
+- HTML全文のみ出力
+
+質問：
+{title}
+"""
+
+        log(f"generate: {slug}")
+        html = call_llm(prompt)
+        save_article(slug, html)
+
+    log("=== daily_update END ===")
 
 if __name__ == "__main__":
     main()
