@@ -1,184 +1,197 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import json
+import requests
 import random
+import json
+import os
 import hashlib
-import re
+from bs4 import BeautifulSoup
 from datetime import datetime
 from pathlib import Path
-import requests
 
-# =========================
-# Settings
-# =========================
+# =====================
+# 設定
+# =====================
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
 
-USED_TOPICS_PATH = DATA_DIR / "used_topics.json"
+QUESTION_PATH = DATA_DIR / "questions.json"
+USED_THEME_PATH = DATA_DIR / "used_themes.json"
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+SEARCH_URL = "https://www.google.com/search"
+QUERY = "site:detail.chiebukuro.yahoo.co.jp 恋愛 片思い"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
-SEARCH_QUERY = 'site:detail.chiebukuro.yahoo.co.jp 恋愛相談'
-FETCH_COUNT = 10          # 検索取得件数
-GENERATE_LIMIT = 3        # 返却する質問数
+MAX_FETCH = 10        # 検索結果数（存在確認用）
+GENERATE_NUM = 1      # cron前提：1回1件
 
-# =========================
-# Persona pools
-# =========================
+# =====================
+# テンプレ素材
+# =====================
 
-AGES = list(range(18, 39))
+AGES = list(range(18, 36))
 
-PERSONS = [
-    ("私", "女性"),
-    ("私", "男性"),
-    ("僕", "男性"),
-    ("俺", "男性"),
-]
+GENDERS = ["女性", "男性"]
 
-RELATIONS = [
+PRONOUNS = {
+    "女性": ["私"],
+    "男性": ["僕", "俺"]
+}
+
+RELATIONSHIPS = [
     "会社の先輩",
     "会社の後輩",
-    "職場の同僚",
+    "同じ部署の同僚",
     "学校の先輩",
     "学校の後輩",
     "同級生",
     "部活の先輩",
-    "部活の後輩",
+    "部活の後輩"
 ]
 
 EMOTIONS = [
     "胸が苦しくなってしまいます",
-    "不安でいっぱいになります",
-    "気持ちが落ち着かなくなります",
-    "嫉妬してしまう自分が嫌になります",
+    "不安な気持ちになります",
+    "嫉妬してしまいます",
+    "気持ちが抑えられません"
 ]
 
-CLOSINGS = [
-    "どのように距離を縮めればよいのでしょうか？",
-    "どんなアプローチが適切なのか教えてください。",
-    "この状況でどう行動すべきか悩んでいます。",
-    "一歩踏み出すべきか迷っています。",
+PROBLEMS = [
+    "距離を縮める方法がわかりません",
+    "どう行動すればいいかわかりません",
+    "勇気が出ずに何もできません",
+    "関係を壊してしまいそうで怖いです"
 ]
 
-# =========================
-# Utils
-# =========================
+# =====================
+# ユーティリティ
+# =====================
 
-def now():
-    return datetime.now().isoformat()
+def load_json(path: Path, default):
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return default
+    return default
 
-def normalize(text: str) -> str:
-    return re.sub(r"\s+", "", text.lower())
-
-def topic_hash(text: str) -> str:
-    return hashlib.sha256(normalize(text).encode("utf-8")).hexdigest()
-
-def load_used_topics() -> set:
-    if not USED_TOPICS_PATH.exists():
-        return set()
-    try:
-        return set(json.loads(USED_TOPICS_PATH.read_text(encoding="utf-8")))
-    except Exception:
-        return set()
-
-def save_used_topics(topics: set):
-    USED_TOPICS_PATH.write_text(
-        json.dumps(list(topics), ensure_ascii=False, indent=2),
+def save_json(path: Path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
 
-# =========================
-# Google Search
-# =========================
+def theme_hash(gender, relationship, problem):
+    raw = f"{gender}|{relationship}|{problem}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-def google_search():
-    if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-        return []
+# =====================
+# Google検索（存在確認のみ）
+# =====================
 
-    url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_API_KEY,
-        "cx": GOOGLE_CSE_ID,
-        "q": SEARCH_QUERY,
-        "num": FETCH_COUNT,
-    }
-
+def fetch_search_links():
     try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
+        res = requests.get(
+            SEARCH_URL,
+            headers=HEADERS,
+            params={"q": QUERY, "num": MAX_FETCH},
+            timeout=10
+        )
     except Exception:
         return []
 
-    items = data.get("items", [])
-    results = []
+    soup = BeautifulSoup(res.text, "html.parser")
+    links = []
 
-    for item in items:
-        title = item.get("title", "").strip()
-        snippet = item.get("snippet", "").strip()
-        if title:
-            results.append({"title": title, "snippet": snippet})
+    for a in soup.select("a"):
+        href = a.get("href", "")
+        if "detail.chiebukuro.yahoo.co.jp" in href:
+            clean = href.split("&")[0].replace("/url?q=", "")
+            links.append(clean)
 
-    return results
+    return list(set(links))
 
-# =========================
-# Rewrite logic（非LLM）
-# =========================
+# =====================
+# 質問生成（完全オリジナル）
+# =====================
 
-def remake_question(theme: str) -> dict:
-    person, gender = random.choice(PERSONS)
+def generate_question(used_themes: set):
+    gender = random.choice(GENDERS)
     age = random.choice(AGES)
-    relation = random.choice(RELATIONS)
+    pronoun = random.choice(PRONOUNS[gender])
+    relationship = random.choice(RELATIONSHIPS)
     emotion = random.choice(EMOTIONS)
-    closing = random.choice(CLOSINGS)
+    problem = random.choice(PROBLEMS)
 
-    body = (
-        f"{person}は{age}歳の{gender}です。"
-        f"{relation}のことが好きで、長い間片思いをしています。"
-        f"{theme}ことがあり、そのたびに{emotion}。"
-        f"しかし、どう距離を縮めればいいのかわかりません。"
-        f"{closing}"
+    h = theme_hash(gender, relationship, problem)
+    if h in used_themes:
+        return None, None
+
+    text = (
+        f"{pronoun}は{age}歳の{gender}です。"
+        f"{relationship}のことが好きで、ずっと片思いをしています。"
+        f"他の異性と話しているのを見ると{emotion}。"
+        f"しかし、{problem}。"
+        f"どのようにアプローチをすれば良いのでしょうか？"
     )
 
-    slug = re.sub(r"[^\wぁ-んァ-ン一-龥]", "", theme)[:50] or "love-question"
-
     return {
-        "question": body,
-        "slug": slug,
-        "created_at": now(),
-    }
+        "id": h,
+        "question": text,
+        "persona": {
+            "age": age,
+            "gender": gender,
+            "pronoun": pronoun,
+            "relationship": relationship
+        },
+        "used": False,
+        "created_at": datetime.now().isoformat()
+    }, h
 
-# =========================
-# Public API
-# =========================
+# =====================
+# メイン処理
+# =====================
 
-def fetch_questions() -> list[dict]:
-    used_topics = load_used_topics()
-    results = []
+def main():
+    print("=== question_fetcher START ===")
 
-    search_results = google_search()
+    used_themes = set(load_json(USED_THEME_PATH, []))
+    questions = load_json(QUESTION_PATH, [])
 
-    random.shuffle(search_results)
+    # 検索は「世の中に相談が存在するか」の確認だけ
+    links = fetch_search_links()
+    if not links:
+        print("No source links found. Exit safely.")
+        return
 
-    for item in search_results:
-        if len(results) >= GENERATE_LIMIT:
+    generated = 0
+
+    for _ in range(20):
+        if generated >= GENERATE_NUM:
             break
 
-        base_theme = item["title"]
-        h = topic_hash(base_theme)
-
-        if h in used_topics:
+        q, h = generate_question(used_themes)
+        if not q:
             continue
 
-        q = remake_question(base_theme)
-        results.append(q)
-        used_topics.add(h)
+        questions.append(q)
+        used_themes.add(h)
+        generated += 1
 
-    save_used_topics(used_topics)
+    if generated == 0:
+        print("No unique question generated.")
+        return
 
-    return results
+    save_json(QUESTION_PATH, questions)
+    save_json(USED_THEME_PATH, list(used_themes))
+
+    print(f"Generated {generated} question(s).")
+    print("=== question_fetcher END ===")
+
+if __name__ == "__main__":
+    main()

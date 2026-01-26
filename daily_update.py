@@ -3,27 +3,27 @@
 
 import json
 import re
+import random
 import hashlib
 from pathlib import Path
 from datetime import datetime
 from llama_cpp import Llama
 
-from question_fetcher import fetch_questions
-
 # =========================
-# Paths / Settings
+# Settings
 # =========================
 
 BASE_DIR = Path(__file__).parent
-
-MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 DATA_DIR = BASE_DIR / "data"
 ARTICLE_DIR = DATA_DIR / "articles"
+QUESTION_FILE = DATA_DIR / "questions.json"
+
+MODEL_PATH = BASE_DIR / "models" / "model.gguf"
 
 ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
 
-# cron前提：必ず1本
 DAILY_GENERATE_COUNT = 1
+MAX_RETRY = 15
 
 MIN_TITLE_LEN = 20
 MIN_BODY_LEN = 600
@@ -56,9 +56,9 @@ print("Initializing LLM...")
 llm = Llama(
     model_path=str(MODEL_PATH),
     n_ctx=2048,
-    temperature=0.85,
+    temperature=0.9,
     top_p=0.95,
-    repeat_penalty=1.1,
+    repeat_penalty=1.15,
     verbose=False,
 )
 
@@ -66,41 +66,31 @@ llm = Llama(
 # Prompt
 # =========================
 
-def build_prompt(question: str) -> str:
-    return f"""
-以下は、実際の恋愛相談です。
-相談者の立場・年齢・人称を尊重しながら、
-読み物として成立する「本気の回答記事」を書いてください。
+PROMPT = """
+以下の恋愛相談に対して、
+第三者として現実的で具体的なアドバイスをしてください。
 
-【重要ルール】
-・説教・精神論・一般論は禁止
-・相談者の感情に寄り添う
-・「あなたの場合は〜」と個別化する
+【条件】
+・抽象論は禁止
+・行動ベースで説明
 ・600文字以上
-・人称は本文内で自然に言及する
-・出力は必ず下記形式のみ
+・相談者の年齢・立場を意識する
 
-【出力形式】
+【形式】
 タイトル：
 本文：
-
-【相談内容】
-{question}
 """.strip()
 
 # =========================
 # Parse
 # =========================
 
-def parse_article(text: str) -> dict | None:
+def parse_article(text: str):
     if "タイトル：" not in text or "本文：" not in text:
         return None
 
-    try:
-        title = text.split("タイトル：", 1)[1].split("本文：", 1)[0].strip()
-        body = text.split("本文：", 1)[1].strip()
-    except Exception:
-        return None
+    title = text.split("タイトル：", 1)[1].split("本文：", 1)[0].strip()
+    body = text.split("本文：", 1)[1].strip()
 
     if len(title) < MIN_TITLE_LEN or len(body) < MIN_BODY_LEN:
         return None
@@ -117,23 +107,29 @@ def parse_article(text: str) -> dict | None:
 # Core
 # =========================
 
-def generate_article(question: str) -> dict | None:
-    prompt = build_prompt(question)
+def load_questions():
+    if not QUESTION_FILE.exists():
+        return []
 
-    try:
-        r = llm(prompt, max_tokens=1300)
-        text = r["choices"][0]["text"].strip()
-    except Exception:
-        return None
+    return json.loads(QUESTION_FILE.read_text(encoding="utf-8"))
 
-    return parse_article(text)
+def save_questions(data):
+    QUESTION_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
-def save_article(article: dict):
+def save_article(article):
     path = ARTICLE_DIR / f"{article['slug']}.json"
     path.write_text(
         json.dumps(article, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
+
+def generate_one(prompt):
+    r = llm(prompt, max_tokens=1200)
+    text = r["choices"][0]["text"].strip()
+    return parse_article(text)
 
 # =========================
 # Main
@@ -142,34 +138,37 @@ def save_article(article: dict):
 def main():
     print("=== daily_update START ===")
 
-    questions = fetch_questions()
-    if not questions:
-        print("No questions. Exit normally.")
+    questions = load_questions()
+    targets = [q for q in questions if not q.get("used")]
+
+    if not targets:
+        print("No unused questions. Exit.")
         return
 
-    generated = 0
+    q = targets[0]
 
-    for q in questions:
-        if generated >= DAILY_GENERATE_COUNT:
-            break
+    prompt = (
+        PROMPT
+        + "\n\n相談者情報：\n"
+        + f"{q['persona']['age']}歳 / {q['persona']['gender']} / {q['persona']['relationship']}\n\n"
+        + "相談内容：\n"
+        + q["question"]
+    )
 
-        question_text = q["question"]
-        print("[GEN]", question_text[:40])
-
-        article = generate_article(question_text)
+    for _ in range(MAX_RETRY):
+        article = generate_one(prompt)
         if not article:
-            print("✖ Generation failed")
             continue
 
         save_article(article)
-        generated += 1
-        print("✔ Saved:", article["slug"])
+        q["used"] = True
+        q["used_at"] = now()
+        save_questions(questions)
 
-    print(f"=== daily_update END ({generated} article) ===")
+        print("✔ Article generated:", article["slug"])
+        break
 
-# =========================
-# Entrypoint
-# =========================
+    print("=== daily_update END ===")
 
 if __name__ == "__main__":
     main()
