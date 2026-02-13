@@ -4,32 +4,21 @@ parameters:
   user_consultation: "The raw text of the user's love concern/question"
   slug: "The filename for the article (e.g., cold-attitude.html)"
 steps:
-  # Step 1: Draft the content based on the template
   - action: "editor_create_file"
-    path: "articles/{{slug}}"
+    path: "posts/{{slug}}"
     content_instruction: |
-      Using the provided HTML template, generate a new article.
+      Generate a new article based on the Yui-nee-san HTML template.
+      
+      CRITICAL INSTRUCTION for CSS:
+      In the <head> section, you MUST include exactly these two stylesheet links:
+      1. <link rel="stylesheet" href="../style.css">
+      2. <link rel="stylesheet" href="post-style.css">
+
       The consultation content is: "{{user_consultation}}"
       
       Requirements:
-      1. Keep the exact HTML structure and CSS classes.
-      2. Fill in all {{PLACEHOLDERS}} such as {{TITLE}}, {{LEAD}}, {{QUESTION}}, {{PSYCHOLOGY}}, etc.
-      3. The persona is 'Yui-nee-san', a professional and supportive love consultant.
-      4. Set {{DATE_ISO}} to the current date and {{DATE_JP}} to Japanese date format.
-      5. Generate a professional {{META_DESCRIPTION}} and {{TITLE}}.
-      6. Do NOT include any Japanese in the code comments, only in the visible content of the HTML.
-
-  # Step 2: Quality Check (Self-debug)
-  - action: "agent_review_file"
-    path: "articles/{{slug}}"
-    instruction: "Check if all placeholders are replaced and ensure the HTML syntax is valid."
-
-  # Step 3: Git Operations
-  - action: "terminal_run_command"
-    command: "git add articles/{{slug}}"
-
-  - action: "terminal_run_command"
-    command: "git commit -m 'feat: add new consultation article: {{slug}}'"
-
-  - action: "terminal_run_command"
-    command: "git push origin main"
+      1. Keep the exact HTML structure.
+      2. Fill {{TITLE}}, {{LEAD}}, {{QUESTION}}, {{PSYCHOLOGY}}, etc.
+      3. Use Yui-nee-san persona (Japanese).
+      4. Set dates: {{DATE_ISO}} (YYYY-MM-DD), {{DATE_JP}} (YYYY年MM月DD日).
+      5. No Japanese in code comments.

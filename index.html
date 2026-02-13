@@ -1,51 +1,158 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <title>ゆい姉さんの相談室</title>
     <link rel="stylesheet" href="style.css">
     <meta name="google-site-verification" content="2Xi8IPSGt7YW2_kOHqAzAfaxtgtYvNqiPSB_x8lhto4" />
     <style>
-        body { margin: 0; padding: 0; background-color: #fff9fb; font-family: sans-serif; }
-        .site-wrapper { display: grid; grid-template-columns: 300px 1fr 300px; gap: 20px; max-width: 1400px; margin: 0 auto; }
-        .sidebar-left { padding: 20px; background: #fff; border-right: 1px solid #ffecf2; min-height: 100vh; }
-        .yui-word { background: #fff0f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; border: 1px dashed #d63384; }
-        .omikuji-btn { width: 100%; padding: 10px; background: #d63384; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .ad-space { margin-top: 30px; width: 100%; height: 500px; background: #f9f9f9; display: flex; align-items: center; justify-content: center; border: 1px solid #eee; }
-        main { background: white; padding: 40px; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.02); }
-        .search-box { text-align: right; margin-bottom: 20px; }
-        .search-box input { padding: 8px; border: 1px solid #ffc0cb; border-radius: 5px; width: 200px; }
-        header h1 { color: #d63384; border-bottom: 3px solid #ffc0cb; padding-bottom: 10px; }
-        .sidebar-right { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-        .yui-img { width: 100%; height: auto; display: block; }
-        .bubble { background: white; border: 2px solid #ffc0cb; padding: 10px 20px; border-radius: 20px; text-decoration: none; color: #d63384; font-weight: bold; margin-bottom: -10px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #fff9fb;
+            font-family: sans-serif;
+        }
+
+        .site-wrapper {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .sidebar-left {
+            padding: 20px;
+            background: #fff;
+            border-right: 1px solid #ffecf2;
+            min-height: 100vh;
+        }
+
+        .yui-word {
+            background: #fff0f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            border: 1px dashed #d63384;
+        }
+
+        .omikuji-btn {
+            width: 100%;
+            padding: 10px;
+            background: #d63384;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .ad-space {
+            margin-top: 30px;
+            width: 100%;
+            height: 500px;
+            background: #f9f9f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #eee;
+        }
+
+        main {
+            background: white;
+            padding: 40px;
+            min-height: 100vh;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.02);
+        }
+
+        .search-box {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            padding: 8px;
+            border: 1px solid #ffc0cb;
+            border-radius: 5px;
+            width: 200px;
+        }
+
+        header h1 {
+            color: #d63384;
+            border-bottom: 3px solid #ffc0cb;
+            padding-bottom: 10px;
+        }
+
+        .sidebar-right {
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .yui-img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .bubble {
+            background: white;
+            border: 2px solid #ffc0cb;
+            padding: 10px 20px;
+            border-radius: 20px;
+            text-decoration: none;
+            color: #d63384;
+            font-weight: bold;
+            margin-bottom: -10px;
+            z-index: 10;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
         @media (max-width: 1100px) {
-            .site-wrapper { grid-template-columns: 1fr; }
-            .sidebar-left, .sidebar-right { display: none; }
+            .site-wrapper {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar-left,
+            .sidebar-right {
+                display: none;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="site-wrapper">
         <aside class="sidebar-left">
             <div class="yui-word"><strong>ゆい姉さん今日の一言</strong><br><span id="daily-msg">読み込み中...</span></div>
             <button class="omikuji-btn" onclick="drawOmikuji()">ゆい姉さんおみくじ</button>
-            <div id="omikuji-result" style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
-            <div class="ad-space"><a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a></div>
+            <div id="omikuji-result"
+                style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
+            <div class="ad-space"><a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a>
+            </div>
         </aside>
 
         <main>
             <div class="search-box">
                 <input type="text" id="search-input" placeholder="お悩みを検索..." onkeypress="handleSearch(event)">
             </div>
-            <header><h1>ゆい姉さんの相談室</h1></header>
-            
+            <header>
+                <h1>ゆい姉さんの相談室</h1>
+            </header>
+
             <div id="latest-posts-list" style="margin: 40px 0;">
                 <p>お便りを探しているわ...</p>
             </div>
 
             <hr style="border: 0; border-top: 1px solid #ffecf2; margin: 40px 0;">
-            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold; font-size:1.1rem;">→ 過去のお悩みアーカイブへ</a>
+            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold; font-size:1.1rem;">→
+                過去のお悩みアーカイブへ</a>
         </main>
 
         <aside class="sidebar-right">
@@ -71,28 +178,44 @@
             document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
         }
 
-        // 記事読み込み（20件表示）
+        // 記事読み込み（予約投稿対応）
         fetch('data/questions.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
                 const container = document.getElementById('latest-posts-list');
                 if (data && data.length > 0) {
-                    container.innerHTML = ''; // 待機メッセージを消去
-                    
-                    // 最新から20件を切り出す
-                    const latestPosts = data.slice(0, 20);
-                    
-                    latestPosts.forEach(post => {
-                        const postHtml = `
-                            <div class="post-item" style="margin-bottom: 50px; border-bottom: 1px dashed #ffecf2; padding-bottom: 20px;">
-                                <p style="color:#999; font-size:0.9rem;">${post.date} 更新</p>
-                                <h2 style="margin: 10px 0;"><a href="${post.url}" style="text-decoration:none; color:#333;">${post.title}</a></h2>
-                                <p style="color:#666; line-height:1.6; font-size:0.95rem;">${post.description}</p>
-                                <a href="${post.url}" style="color:#d63384; font-weight:bold; text-decoration:none;">お返事を読む ➔</a>
-                            </div>
-                        `;
-                        container.innerHTML += postHtml;
+                    container.innerHTML = '';
+
+                    // 今日の日付を取得 (YYYY.MM.DD 形式)
+                    const now = new Date();
+                    const jstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // JST補正（必要に応じて）
+                    const todayStr = now.getFullYear() + '.' +
+                        String(now.getMonth() + 1).padStart(2, '0') + '.' +
+                        String(now.getDate()).padStart(2, '0');
+
+                    // 【予約投稿ロジック】今日以前の日付の記事だけを抽出
+                    const publishedPosts = data.filter(post => {
+                        return post.date <= todayStr;
                     });
+
+                    // 公開済みの中から最新20件を切り出す
+                    const latestPosts = publishedPosts.slice(0, 20);
+
+                    if (latestPosts.length > 0) {
+                        latestPosts.forEach(post => {
+                            const postHtml = `
+                                <div class="post-item" style="margin-bottom: 50px; border-bottom: 1px dashed #ffecf2; padding-bottom: 20px;">
+                                    <p style="color:#999; font-size:0.9rem;">${post.date} 更新</p>
+                                    <h2 style="margin: 10px 0;"><a href="${post.url}" style="text-decoration:none; color:#333;">${post.title}</a></h2>
+                                    <p style="color:#666; line-height:1.6; font-size:0.95rem;">${post.description}</p>
+                                    <a href="${post.url}" style="color:#d63384; font-weight:bold; text-decoration:none;">お返事を読む ➔</a>
+                                </div>
+                            `;
+                            container.innerHTML += postHtml;
+                        });
+                    } else {
+                        container.innerHTML = '<p>今日のお便りはまだ届いていないみたい。待っていてね。</p>';
+                    }
                 } else {
                     container.innerHTML = '<p>まだお便りが届いていないみたい。待っていてね。</p>';
                 }
@@ -102,4 +225,5 @@
             });
     </script>
 </body>
+
 </html>

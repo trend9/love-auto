@@ -1,0 +1,154 @@
+/* posts/post-style.css */
+
+:root {
+    --primary-color: #2c3e50;
+    /* 深みのあるネイビー（知的・信頼） */
+    --accent-color: #a68b5b;
+    /* 落ち着いたゴールド（上品・大人） */
+    --bg-color: #f9f7f2;
+    /* 柔らかなアイボリー（安心感） */
+    --text-color: #333333;
+    --section-bg: #ffffff;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: "Times New Roman", "YuMincho", "Hiragino Mincho ProN", "MS PMincho", serif;
+    /* 明朝体で大人っぽさを演出 */
+    line-height: 1.8;
+    margin: 0;
+    padding: 0;
+}
+
+.post-container {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 40px;
+    background-color: var(--section-bg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+}
+
+.post-date {
+    text-align: right;
+    font-size: 0.9rem;
+    color: #888;
+    margin-bottom: 10px;
+}
+
+.post-title {
+    font-size: 1.8rem;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 15px;
+    margin-bottom: 30px;
+    text-align: center;
+    letter-spacing: 0.05em;
+}
+
+.post-lead {
+    font-style: italic;
+    background: rgba(166, 139, 91, 0.05);
+    padding: 20px;
+    border-left: 4px solid var(--accent-color);
+    margin-bottom: 40px;
+}
+
+.section-title {
+    font-size: 1.4rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    margin-top: 40px;
+    margin-bottom: 20px;
+}
+
+.section-title::before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    background-color: var(--accent-color);
+    margin-right: 15px;
+    transform: rotate(45deg);
+}
+
+.post-text {
+    margin-bottom: 25px;
+}
+
+/* 相談内容セクションの特別な装飾 */
+.letter-section {
+    background-color: #f0f2f5;
+    padding: 25px;
+    border-radius: 10px;
+    position: relative;
+    margin-bottom: 40px;
+}
+
+.letter-section::after {
+    content: "Letter";
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    font-family: 'Georgia', serif;
+    font-style: italic;
+    font-size: 2rem;
+    color: rgba(44, 62, 80, 0.05);
+}
+
+/* リストのデザイン */
+.advice-list,
+.ng-list {
+    list-style: none;
+    padding: 0;
+}
+
+.advice-list li,
+.ng-list li {
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid #eee;
+    border-radius: 5px;
+}
+
+.advice-list li strong {
+    color: var(--accent-color);
+}
+
+.ng-list li {
+    border-left: 4px solid #d9534f;
+    /* NGは少し警告色を混ぜる */
+}
+
+/* ナビゲーション・リンク */
+.back-area {
+    margin-top: 50px;
+    text-align: center;
+    border-top: 1px solid #eee;
+    padding-top: 30px;
+}
+
+.back-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: 0.3s;
+    font-weight: bold;
+}
+
+.back-link:hover {
+    color: var(--accent-color);
+}
+
+/* モバイル対応 */
+@media (max-width: 600px) {
+    .post-container {
+        margin: 10px;
+        padding: 20px;
+    }
+
+    .post-title {
+        font-size: 1.4rem;
+    }
+}
