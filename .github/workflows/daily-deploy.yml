@@ -1,11 +1,12 @@
-# .github/workflows/daily-deploy.yml
-name: Daily Schedule Deploy
+name: Daily Update
 
 on:
   schedule:
-    # 毎日日本時間の午前9時に実行 (UTC 0:00)
+    # 毎日日本時間の午前9時 (UTC 0:00) に実行
     - cron: '0 0 * * *'
-  workflow_dispatch: # 手動で実行したい時用
+  workflow_dispatch: # 手動でいつでも実行できるボタンを出す設定
+  push:
+    branches: [ main ] # mainにプッシュされた時も自動で更新する
 
 jobs:
   build:
@@ -14,5 +15,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ここでGitHub Pagesなどにデプロイする設定を書く
-      # すでに自動デプロイ設定がある場合は、この「schedule」を追加するだけでOK
+      # GitHub Pagesを使っている場合、ここでデプロイを実行
+      # 特別なビルド（npm install等）が不要なHTMLサイトなら、
+      # 下記の公式アクションを使うのが一番簡単だよ
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

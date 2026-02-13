@@ -1,24 +1,31 @@
 name: "publish_yui_article"
-description: "Automatically generates a love consultation article based on Yui-nee-san's template and pushes it to GitHub."
+description: "Generates a Yui-nee-san article in Japanese with a calculated future date and dual CSS links."
 parameters:
-  user_consultation: "The raw text of the user's love concern/question"
-  slug: "The filename for the article (e.g., cold-attitude.html)"
+  user_consultation: "The raw text of the user's love concern"
+  slug: "The filename (e.g., cold-attitude.html)"
+  target_date: "The publication date in YYYY.MM.DD format (for JSON and Display)"
+  target_date_iso: "The publication date in YYYY-MM-DD format (for Article Metadata)"
+  target_date_jp: "The publication date in YYYY年MM月DD日 format (for Article Body)"
 steps:
   - action: "editor_create_file"
     path: "posts/{{slug}}"
     content_instruction: |
-      Generate a new article based on the Yui-nee-san HTML template.
-      
-      CRITICAL INSTRUCTION for CSS:
-      In the <head> section, you MUST include exactly these two stylesheet links:
+      [LANGUAGE]
+      - Content MUST be in JAPANESE. 
+      - Persona: Yui-nee-san (Kind, professional, empathetic).
+      - Code comments: ENGLISH only.
+
+      [CSS]
+      Include these two links in <head>:
       1. <link rel="stylesheet" href="../style.css">
       2. <link rel="stylesheet" href="post-style.css">
 
-      The consultation content is: "{{user_consultation}}"
-      
-      Requirements:
-      1. Keep the exact HTML structure.
-      2. Fill {{TITLE}}, {{LEAD}}, {{QUESTION}}, {{PSYCHOLOGY}}, etc.
-      3. Use Yui-nee-san persona (Japanese).
-      4. Set dates: {{DATE_ISO}} (YYYY-MM-DD), {{DATE_JP}} (YYYY年MM月DD日).
-      5. No Japanese in code comments.
+      [DATES]
+      Use these values for placeholders:
+      - {{DATE_ISO}} -> {{target_date_iso}}
+      - {{DATE_JP}} -> {{target_date_jp}}
+      - Display date in body -> {{target_date}}
+
+      [CONTENT GENERATION]
+      Based on "{{user_consultation}}", write a full advice article.
+      Fill all placeholders: {{TITLE}}, {{LEAD}}, {{QUESTION}}, {{SUMMARY_ANSWER}}, {{PSYCHOLOGY}}, {{ACTION_LIST}}, {{NG_LIST}}, {{MISUNDERSTANDING}}, {{CONCLUSION}}.
