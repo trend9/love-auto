@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
 
@@ -64,76 +65,77 @@
 
 <body>
 
-<main class="post-container">
+  <main class="post-container">
 
-  <p class="post-date">更新日：{{DATE_JP}}</p>
+    <p class="post-date">更新日：{{DATE_JP}}</p>
 
-  <h1 class="post-title">{{TITLE}}</h1>
+    <h1 class="post-title">{{TITLE}}</h1>
 
-  <!-- 導入 -->
-  <section class="post-lead">
-    <p>{{LEAD}}</p>
-  </section>
+    <!-- 導入 -->
+    <section class="post-lead">
+      <p>{{LEAD}}</p>
+    </section>
 
-  <!-- 相談内容（早めに配置） -->
-  <section class="letter-section">
-    <h2 class="section-title">ご相談内容</h2>
-    <p class="post-text" style="white-space: pre-wrap;">
-{{QUESTION}}
-    </p>
-  </section>
+    <!-- 相談内容（早めに配置） -->
+    <section class="letter-section">
+      <h2 class="section-title">ご相談内容</h2>
+      <p class="post-text" style="white-space: pre-wrap;">
+        {{QUESTION}}
+      </p>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">結論</h2>
-    <p class="post-text">{{SUMMARY_ANSWER}}</p>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">結論</h2>
+      <p class="post-text">{{SUMMARY_ANSWER}}</p>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">相手の心理を整理します</h2>
-    <p class="post-text">{{PSYCHOLOGY}}</p>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">相手の心理を整理します</h2>
+      <p class="post-text">{{PSYCHOLOGY}}</p>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">今できる具体的な行動</h2>
-    <ul class="advice-list">
-      {{ACTION_LIST}}
-    </ul>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">今できる具体的な行動</h2>
+      <ul class="advice-list">
+        {{ACTION_LIST}}
+      </ul>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">避けたい行動</h2>
-    <ul class="ng-list">
-      {{NG_LIST}}
-    </ul>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">避けたい行動</h2>
+      <ul class="ng-list">
+        {{NG_LIST}}
+      </ul>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">よくある勘違い</h2>
-    <p class="post-text">{{MISUNDERSTANDING}}</p>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">よくある勘違い</h2>
+      <p class="post-text">{{MISUNDERSTANDING}}</p>
+    </section>
 
-  <section class="answer-section">
-    <h2 class="section-title">まとめ</h2>
-    <p class="post-text">{{CONCLUSION}}</p>
-  </section>
+    <section class="answer-section">
+      <h2 class="section-title">まとめ</h2>
+      <p class="post-text">{{CONCLUSION}}</p>
+    </section>
 
-  <section class="related-section">
-    <h2 class="section-title">関連する相談</h2>
-    <ul class="related-list">
-      {{RELATED}}
-    </ul>
-  </section>
+    <section class="related-section">
+      <h2 class="section-title">関連する相談</h2>
+      <ul class="related-list">
+        {{RELATED}}
+      </ul>
+    </section>
 
-  <nav class="post-nav">
-    {{PREV}}
-    {{NEXT}}
-  </nav>
+    <nav class="post-nav">
+      {{PREV}}
+      {{NEXT}}
+    </nav>
 
-  <div class="back-area">
-    <a href="../index.html" class="back-link">← 相談室トップへ戻る</a>
-  </div>
+    <div class="back-area">
+      <a href="../index.html" class="back-link">← 相談室トップへ戻る</a>
+    </div>
 
-</main>
+  </main>
 
 </body>
+
 </html>
