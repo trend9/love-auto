@@ -141,6 +141,68 @@ body {
     color: var(--accent-color);
 }
 
+/* パンくずリスト */
+.breadcrumb {
+    font-size: 0.85rem;
+    margin-bottom: 20px;
+    color: #888;
+}
+
+.breadcrumb a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+/* SNSシェア */
+.sns-share {
+    margin: 40px 0;
+    padding: 20px;
+    background: #fafaf8;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.share-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+}
+
+.sns-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.sns-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 25px;
+    color: white;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: bold;
+    min-width: 120px;
+    transition: opacity 0.2s;
+}
+
+.sns-btn:hover {
+    opacity: 0.8;
+}
+
+.x-btn {
+    background: #000;
+}
+
+.line-btn {
+    background: #06c755;
+}
+
 /* モバイル対応 */
 @media (max-width: 600px) {
     .post-container {
@@ -150,5 +212,14 @@ body {
 
     .post-title {
         font-size: 1.4rem;
+    }
+
+    .sns-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .sns-btn {
+        width: 100%;
     }
 }
