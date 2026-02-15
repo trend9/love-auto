@@ -40,7 +40,7 @@ header h1 {
     background: var(--white);
     padding: 30px;
     border-radius: 20px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
     margin-bottom: 40px;
     border: 1px solid #f3e5f5;
 }
@@ -61,8 +61,17 @@ header h1 {
     box-shadow: 0 5px 15px rgba(209, 163, 255, 0.3);
 }
 
-.post-card .date { font-size: 0.8rem; color: #bbb; }
-.post-card .title { font-weight: bold; color: var(--text-color); display: block; margin-top: 5px; }
+.post-card .date {
+    font-size: 0.8rem;
+    color: #bbb;
+}
+
+.post-card .title {
+    font-weight: bold;
+    color: var(--text-color);
+    display: block;
+    margin-top: 5px;
+}
 
 /* プロフィールページ専用画像サイズ */
 .profile-image-large {
@@ -70,7 +79,7 @@ header h1 {
     height: auto;
     margin: 0 auto 20px;
     display: block;
-    filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));
+    filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.1));
 }
 
 /* --- PC用：右下の立ち絵（yui.png） --- */
@@ -89,7 +98,7 @@ header h1 {
     height: 100%;
     width: auto;
     display: block;
-    filter: drop-shadow(-10px 0 20px rgba(0,0,0,0.1));
+    filter: drop-shadow(-10px 0 20px rgba(0, 0, 0, 0.1));
     pointer-events: auto;
 }
 
@@ -101,7 +110,7 @@ header h1 {
     background: white;
     padding: 15px 20px;
     border-radius: 20px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     font-size: 0.9rem;
     width: 200px;
     border: 2px solid var(--accent-color);
@@ -118,53 +127,86 @@ header h1 {
     border-color: white transparent transparent;
 }
 
-/* --- モバイル用 --- */
-.yui-chibi-fixed {
+/* --- モバイル用：右下のプロフィールボタン --- */
+.mobile-profile-btn {
     position: fixed;
     bottom: 20px;
     right: 20px;
-    width: 80px;
+    width: 70px;
+    /* 小さめに */
+    height: 70px;
     z-index: 2000;
     display: none;
+    /* デフォルト非表示、モバイルで表示 */
+    transition: transform 0.2s;
 }
 
-.yui-chibi-fixed img {
+.mobile-profile-btn img {
     width: 100%;
-    filter: drop-shadow(0 5px 10px rgba(0,0,0,0.2));
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.mobile-profile-btn:active {
+    transform: scale(0.95);
 }
 
 @media (max-width: 1024px) {
-    .yui-pc-fixed { display: none; }
-    .yui-chibi-fixed { display: block; }
+    .yui-pc-fixed {
+        display: none;
+    }
+
+    .mobile-profile-btn {
+        display: block;
+    }
+
+    /* モバイル時のメインコンテンツ調整 */
+    main {
+        padding: 20px !important;
+        /* パディングを縮小して画面を広く使う */
+    }
+
+    .site-wrapper {
+        gap: 0;
+    }
 }
 
 @media (max-width: 768px) {
-    header h1 { font-size: 1.3rem; }
-    .yui-chibi-fixed { width: 70px; bottom: 15px; right: 15px; }
+    header h1 {
+        font-size: 1.3rem;
+    }
+
+    .mobile-profile-btn {
+        width: 60px;
+        height: 60px;
+        bottom: 15px;
+        right: 15px;
+    }
 }
 
 .archive-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
 }
 
 .archive-card {
-  padding: 20px;
-  border-radius: 12px;
-  background: #111;
-  transition: transform .2s;
+    padding: 20px;
+    border-radius: 12px;
+    background: #111;
+    transition: transform .2s;
 }
 
 .archive-card:hover {
-  transform: translateY(-4px);
+    transform: translateY(-4px);
 }
 
 .post-nav {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 60px;
-  font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 60px;
+    font-size: 14px;
 }
 
 /* =====================================================
@@ -176,7 +218,7 @@ header h1 {
     background: var(--white);
     padding: 40px 30px;
     border-radius: 24px;
-    box-shadow: 0 15px 40px rgba(0,0,0,0.06);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.06);
     border: 1px solid #f3e5f5;
 }
 
