@@ -24,6 +24,25 @@
             <p id="result-count" style="font-size:0.9rem; color:#666; margin-top:10px;"></p>
         </div>
 
+        <!-- カテゴリータブ -->
+        <div class="category-tabs" id="category-tabs" style="margin: 30px 0;">
+            <button class="cat-tab active" onclick="filterByCat('すべて', this)">すべて</button>
+            <button class="cat-tab" onclick="filterByCat('片思い', this)">片思い</button>
+            <button class="cat-tab" onclick="filterByCat('彼氏・彼女', this)">彼氏・彼女</button>
+            <button class="cat-tab" onclick="filterByCat('結婚', this)">結婚</button>
+            <button class="cat-tab" onclick="filterByCat('出会い', this)">出会い</button>
+            <button class="cat-tab" onclick="filterByCat('復縁・別れ', this)">復縁・別れ</button>
+            <button class="cat-tab" onclick="filterByCat('夜の悩み', this)">夜の悩み</button>
+        </div>
+
+        <!-- 注目記事セクション -->
+        <div id="featured-articles" style="margin: 30px 0;">
+            <p style="text-align:center;">読み込み中...</p>
+        </div>
+
+        <hr style="border: 0; border-top: 2px solid #ffecf2; margin: 40px 0;">
+        <h2 style="color:#d63384; margin-bottom:20px;">すべての相談アーカイブ</h2>
+
         <div id="archive-list" class="archive-grid">
             <p style="text-align:center;">読み込み中...</p>
         </div>
@@ -42,29 +61,119 @@
         <img src="yuichibi.png" alt="プロフィールへ">
     </a>
 
+    <script src="data/questions.js"></script>
     <script>
         let allPosts = [];
         let displayedCount = 0;
         const LOAD_STEP = 24;
+        let currentCategory = 'すべて';
+
+        // カテゴリーマッピング (index.htmlと同じ)
+        const mapping = {
+            '片思い': ['片思い', '初デート', '告白'],
+            '彼氏・彼女': ['付き合って3ヶ月', '付き合って1年', '不信感', '信頼関係', '嫉妬', '浮気'],
+            '結婚': ['結婚', '結婚前', '義実家', '義理'],
+            '出会い': ['マッチングアプリ', '出会い', '合コン'],
+            '復縁・別れ': ['別れ', '別れた後', '元彼', '復縁'],
+            '夜の悩み': ['夜の', 'セフレ', '性生活', '都合のいい関係']
+        };
+
+        function getCategory(post) {
+            const content = post.title + post.description;
+            for (const [cat, keywords] of Object.entries(mapping)) {
+                if (keywords.some(k => content.includes(k))) return cat;
+            }
+            return 'その他';
+        }
+
+        function filterByCat(cat, btn) {
+            // タブの活性化
+            document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+
+            currentCategory = cat;
+
+            // 検索クエリをクリア
+            document.getElementById('archive-search').value = '';
+
+            // 注目記事とアーカイブを再レンダリング
+            renderFeaturedArticles();
+            filterAndRender('');
+        }
+
+        function renderFeaturedArticles() {
+            const container = document.getElementById('featured-articles');
+
+            if (currentCategory === 'すべて') {
+                // すべてのカテゴリーから3記事ずつ表示
+                let html = '';
+                for (const cat of ['片思い', '彼氏・彼女', '結婚', '出会い', '復縁・別れ', '夜の悩み']) {
+                    const catPosts = allPosts.filter(post => getCategory(post) === cat).slice(0, 3);
+                    if (catPosts.length > 0) {
+                        html += `
+                            <div style="margin-bottom: 40px;">
+                                <h3 style="color:#d63384; border-left: 4px solid #ffc0cb; padding-left: 10px; margin-bottom: 15px;">${cat}</h3>
+                                <div class="archive-grid" style="margin-bottom: 20px;">
+                                    ${catPosts.map(post => `
+                                        <a href="${post.url}" class="post-card">
+                                            <div class="date">${post.date}</div>
+                                            <div class="title">${post.title}</div>
+                                            <div style="font-size:0.85rem; color:#666; margin-top:5px; height:4.5em; overflow:hidden;">${post.description.substring(0, 60)}...</div>
+                                        </a>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                container.innerHTML = html || '<p style="text-align:center;">記事がありません。</p>';
+            } else {
+                // 選択されたカテゴリーから6記事表示
+                const catPosts = allPosts.filter(post => getCategory(post) === currentCategory).slice(0, 6);
+                if (catPosts.length > 0) {
+                    container.innerHTML = `
+                        <h3 style="color:#d63384; border-left: 4px solid #ffc0cb; padding-left: 10px; margin-bottom: 15px;">${currentCategory}の注目記事</h3>
+                        <div class="archive-grid">
+                            ${catPosts.map(post => `
+                                <a href="${post.url}" class="post-card">
+                                    <div class="date">${post.date}</div>
+                                    <div class="title">${post.title}</div>
+                                    <div style="font-size:0.85rem; color:#666; margin-top:5px; height:4.5em; overflow:hidden;">${post.description.substring(0, 60)}...</div>
+                                </a>
+                            `).join('')}
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = '<p style="text-align:center;">このカテゴリーの記事はまだありません。</p>';
+                }
+            }
+        }
+
+        let currentFilteredPosts = [];
 
         // URLパラメータから検索クエリを取得
         const urlParams = new URLSearchParams(window.location.search);
         const initialQuery = urlParams.get('q') || '';
         document.getElementById('archive-search').value = initialQuery;
 
-        fetch('data/questions.json?v=' + Date.now())
-            .then(res => res.json())
-            .then(data => {
-                // 日付降順にソート（念のため）
-                allPosts = data.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-                // 初期表示
-                filterAndRender(initialQuery);
-            })
-            .catch(err => {
-                document.getElementById('archive-list').innerHTML = '<p>データの読み込みに失敗しました。</p>';
-                console.error(err);
+        // 記事読み込み (questions.jsから取得)
+        if (typeof questionsData !== 'undefined') {
+            // 日付降順にソート（念のため）
+            allPosts = questionsData.sort((a, b) => {
+                const dateA = a.date.replace(/\./g, '/');
+                const dateB = b.date.replace(/\./g, '/');
+                return new Date(dateB) - new Date(dateA);
             });
+
+            // 注目記事を表示
+            renderFeaturedArticles();
+
+            // 初期表示
+            filterAndRender(initialQuery);
+        } else {
+            document.getElementById('archive-list').innerHTML = '<p>データの読み込みに失敗しました。</p>';
+            document.getElementById('featured-articles').innerHTML = '<p>データの読み込みに失敗しました。</p>';
+        }
 
         document.getElementById('archive-search').addEventListener('input', (e) => {
             filterAndRender(e.target.value);
@@ -74,18 +183,23 @@
             renderPosts(currentFilteredPosts, true);
         });
 
-        let currentFilteredPosts = [];
-
         function filterAndRender(query) {
             const container = document.getElementById('archive-list');
             container.innerHTML = '';
             displayedCount = 0;
 
+            // カテゴリーでフィルタリング
+            let basePosts = allPosts;
+            if (currentCategory !== 'すべて') {
+                basePosts = allPosts.filter(post => getCategory(post) === currentCategory);
+            }
+
+            // 検索クエリでフィルタリング
             if (!query) {
-                currentFilteredPosts = allPosts;
+                currentFilteredPosts = basePosts;
             } else {
                 const lowerQ = query.toLowerCase();
-                currentFilteredPosts = allPosts.filter(post =>
+                currentFilteredPosts = basePosts.filter(post =>
                     post.title.toLowerCase().includes(lowerQ) ||
                     post.description.toLowerCase().includes(lowerQ)
                 );

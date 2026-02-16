@@ -50,17 +50,6 @@
             font-weight: bold;
         }
 
-        .ad-space {
-            margin-top: 30px;
-            width: 100%;
-            height: 500px;
-            background: #f9f9f9;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #eee;
-        }
-
         main {
             background: white;
             padding: 40px;
@@ -115,6 +104,28 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
         }
 
+        .ad-container {
+            margin-top: 20px;
+        }
+
+        .ad-space {
+            margin-bottom: 0;
+            text-align: center;
+            line-height: 0;
+        }
+
+        .ad-space img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* モバイル用広告エリア */
+        .mobile-ad-area {
+            display: none;
+        }
+
         @media (max-width: 1100px) {
             .site-wrapper {
                 grid-template-columns: 1fr;
@@ -123,6 +134,29 @@
             .sidebar-left,
             .sidebar-right {
                 display: none;
+            }
+
+            main {
+                padding: 20px;
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+
+            .category-tabs {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            /* モバイル時は広告を下部に表示 */
+            .mobile-ad-area {
+                display: block;
+                margin: 40px auto;
+                max-width: 100%;
+                padding: 0 20px;
+            }
+
+            .mobile-ad-area .ad-space {
+                margin-bottom: 0;
             }
         }
     </style>
@@ -135,7 +169,23 @@
             <button class="omikuji-btn" onclick="drawOmikuji()">ゆい姉さんおみくじ</button>
             <div id="omikuji-result"
                 style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
-            <div class="ad-space"><a href="index.html"><img src="ad_sample.png" alt="広告募集" style="width:100%;"></a>
+            <div class="ad-container">
+                <!-- 広告1 -->
+                <div class="ad-space">
+                    <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+                        <img border="0" height="250" alt=""
+                            src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+                    <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9"
+                        alt="">
+                </div>
+                <!-- 広告2 -->
+                <div class="ad-space">
+                    <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+                        <img border="0" height="250" alt=""
+                            src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+                    <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT"
+                        alt="">
+                </div>
             </div>
         </aside>
 
@@ -147,14 +197,45 @@
                 <h1>ゆい姉さんの相談室</h1>
             </header>
 
-            <div id="latest-posts-list" style="margin: 40px 0;">
+            <!-- カテゴリータブ -->
+            <div class="category-tabs" id="category-tabs">
+                <button class="cat-tab active" onclick="filterByCat('すべて', this)">すべて</button>
+                <button class="cat-tab" onclick="filterByCat('片思い', this)">片思い</button>
+                <button class="cat-tab" onclick="filterByCat('彼氏・彼女', this)">彼氏・彼女</button>
+                <button class="cat-tab" onclick="filterByCat('結婚', this)">結婚</button>
+                <button class="cat-tab" onclick="filterByCat('出会い', this)">出会い</button>
+                <button class="cat-tab" onclick="filterByCat('復縁・別れ', this)">復縁・別れ</button>
+                <button class="cat-tab" onclick="filterByCat('夜の悩み', this)">夜の悩み</button>
+            </div>
+
+            <div id="latest-posts-list" style="margin: 20px 0;">
                 <p>お便りを探しているわ...</p>
             </div>
 
-            <hr style="border: 0; border-top: 1px solid #ffecf2; margin: 40px 0;">
-            <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold; font-size:1.1rem;">→
-                過去のお悩みアーカイブへ</a>
+            <p style="text-align:center; margin-top:40px; font-size:0.9rem;">
+                <a href="archive.html" style="color:#d63384; text-decoration:none; font-weight:bold;">→
+                    過去のお悩みアーカイブへ</a>
         </main>
+
+        <!-- モバイル用広告エリア（ページ下部） -->
+        <div class="mobile-ad-area">
+            <!-- 広告1 -->
+            <div class="ad-space">
+                <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+                    <img border="0" height="250" alt=""
+                        src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+                <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9"
+                    alt="">
+            </div>
+            <!-- 広告2 -->
+            <div class="ad-space">
+                <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+                    <img border="0" height="250" alt=""
+                        src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+                <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT"
+                    alt="">
+            </div>
+        </div>
 
         <aside class="sidebar-right">
             <a href="profile.html" class="bubble">ゆい姉さんのプロフィール</a>
@@ -167,6 +248,7 @@
         <img src="yuichibi.png" alt="プロフィールへ">
     </a>
 
+    <script src="data/questions.js"></script>
     <script>
         // 検索処理
         function handleSearch(e) {
@@ -184,51 +266,69 @@
             document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
         }
 
-        // 記事読み込み（予約投稿対応）
-        fetch('data/questions.json?v=' + Date.now())
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('latest-posts-list');
-                if (data && data.length > 0) {
-                    container.innerHTML = '';
+        let allPosts = [];
+        const mapping = {
+            '片思い': ['片思い', '初デート', '告白'],
+            '彼氏・彼女': ['付き合って3ヶ月', '付き合って1年', '不信感', '信頼関係', '嫉妬', '浮気'],
+            '結婚': ['結婚', '結婚前', '義実家', '義理'],
+            '出会い': ['マッチングアプリ', '出会い', '合コン'],
+            '復縁・別れ': ['別れ', '別れた後', '元彼', '復縁'],
+            '夜の悩み': ['夜の', 'セフレ', '性生活', '都合のいい関係']
+        };
 
-                    // 今日の日付を取得 (YYYY.MM.DD 形式)
-                    const now = new Date();
-                    const jstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // JST補正（必要に応じて）
-                    const todayStr = now.getFullYear() + '.' +
-                        String(now.getMonth() + 1).padStart(2, '0') + '.' +
-                        String(now.getDate()).padStart(2, '0');
+        function getCategory(post) {
+            const content = post.title + post.description;
+            for (const [cat, keywords] of Object.entries(mapping)) {
+                if (keywords.some(k => content.includes(k))) return cat;
+            }
+            return 'その他';
+        }
 
-                    // 【予約投稿ロジック】今日以前の日付の記事だけを抽出
-                    const publishedPosts = data.filter(post => {
-                        return post.date <= todayStr;
-                    });
+        function filterByCat(cat, btn) {
+            // タブの活性化
+            document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
 
-                    // 公開済みの中から最新20件を切り出す
-                    const latestPosts = publishedPosts.slice(0, 20);
+            renderPosts(cat);
+        }
 
-                    if (latestPosts.length > 0) {
-                        latestPosts.forEach(post => {
-                            const postHtml = `
-                                <div class="post-item" style="margin-bottom: 50px; border-bottom: 1px dashed #ffecf2; padding-bottom: 20px;">
-                                    <p style="color:#999; font-size:0.9rem;">${post.date} 更新</p>
-                                    <h2 style="margin: 10px 0;"><a href="${post.url}" style="text-decoration:none; color:#333;">${post.title}</a></h2>
-                                    <p style="color:#666; line-height:1.6; font-size:0.95rem;">${post.description}</p>
-                                    <a href="${post.url}" style="color:#d63384; font-weight:bold; text-decoration:none;">お返事を読む ➔</a>
-                                </div>
-                            `;
-                            container.innerHTML += postHtml;
-                        });
-                    } else {
-                        container.innerHTML = '<p>今日のお便りはまだ届いていないみたい。待っていてね。</p>';
-                    }
-                } else {
-                    container.innerHTML = '<p>まだお便りが届いていないみたい。待っていてね。</p>';
-                }
-            })
-            .catch(err => {
-                document.getElementById('latest-posts-list').innerHTML = '<p>読み込みに失敗しちゃった。リロードしてみてね。</p>';
-            });
+        function renderPosts(categoryFilter = 'すべて') {
+            const container = document.getElementById('latest-posts-list');
+
+            // 公開済みかつフィルターに合うものを抽出
+            const now = new Date();
+            const todayStr = now.getFullYear() + '.' + String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2, '0');
+
+            let filtered = allPosts.filter(post => post.date <= todayStr);
+
+            if (categoryFilter !== 'すべて') {
+                filtered = filtered.filter(post => getCategory(post) === categoryFilter);
+            }
+
+            // 最新6件に制限
+            const displayPosts = filtered.slice(0, 6);
+
+            if (displayPosts.length > 0) {
+                container.innerHTML = displayPosts.map(post => `
+                    <div class="post-item" style="margin-bottom: 50px; border-bottom: 1px dashed #ffecf2; padding-bottom: 20px;">
+                        <p style="color:#999; font-size:0.8rem;">${post.date} 更新</p>
+                        <h2 style="margin: 10px 0;"><a href="${post.url}" style="text-decoration:none; color:#333;">${post.title}</a></h2>
+                        <p style="color:#666; line-height:1.6; font-size:0.95rem;">${post.description}</p>
+                        <a href="${post.url}" style="color:#d63384; font-weight:bold; text-decoration:none;">お返事を読む ➔</a>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<p>該当するお便りはまだ届いていないみたい。待っていてね。</p>';
+            }
+        }
+
+        // 記事読み込み (questions.jsから取得)
+        if (typeof questionsData !== 'undefined') {
+            allPosts = questionsData;
+            renderPosts();
+        } else {
+            document.getElementById('latest-posts-list').innerHTML = '<p>読み込みに失敗しちゃった。リロードしてみてね。</p>';
+        }
     </script>
 </body>
 

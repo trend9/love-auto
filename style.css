@@ -294,3 +294,60 @@ header h1 {
 .article-related a:hover {
     text-decoration: underline;
 }
+
+/* カテゴリータブのスタイル */
+.category-tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    padding: 10px 0;
+    margin-bottom: 20px;
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+}
+
+.category-tabs::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari, Opera */
+}
+
+.cat-tab {
+    white-space: nowrap;
+    padding: 8px 20px;
+    border-radius: 20px;
+    border: 2px solid #ffecf2;
+    background: white;
+    color: #d63384;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.cat-tab:hover {
+    background: #fff0f5;
+    border-color: #ffc0cb;
+}
+
+.cat-tab.active {
+    background: #d63384;
+    color: white;
+    border-color: #d63384;
+    box-shadow: 0 4px 10px rgba(214, 51, 132, 0.2);
+}
+
+@media (max-width: 768px) {
+    .category-tabs {
+        padding: 10px 5px;
+        margin: 0 -20px 20px -20px;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+
+    .cat-tab {
+        padding: 6px 15px;
+        font-size: 0.85rem;
+    }
+}
