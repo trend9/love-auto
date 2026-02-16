@@ -22,79 +22,73 @@ def generate_slug(topic, date_str):
     return f"{slug}.html"
 
 def get_yui_content(topic):
-    # Simple rule-based content generation to simulate specific advice
-    # In a real scenario, this would be an LLM call, but we are batching 500 locally.
-    
     topic_lower = topic.lower()
     
+    # Determine the Situation (heuristic)
+    situation = "恋愛"
+    if "first date" in topic_lower: situation = "初デート"
+    elif "office" in topic_lower: situation = "社内恋愛"
+    elif "age gap" in topic_lower: situation = "年の差恋愛"
+    
     title = f"【相談】{topic}について悩んでいます…ゆい姉さんの回答"
-    desc = f"{topic}についての悩みは深いですよね。ゆい姉さんが男性心理と解決策をズバリ解説します。"
-    
-    lead = "恋する乙女の皆さん、こんにちは。ゆい姉さんです。今日もまた一つ、切実な悩みが届きました。一人で抱え込まず、一緒に紐解いていきましょう。"
-    question = f"最近、{topic}のことで悩んでいます。どうすればいいでしょうか？アドバイスをください。"
-    
-    # Keyword logic
-    if "line" in topic_lower or "message" in topic_lower or "text" in topic_lower:
-        cat = "LINE・連絡"
-        psychology = "男性はLINEを『連絡手段』としか見ていないことが多いです。既読スルーは『了解』のサインかもしれません。"
-        action = "<li>返信を催促せず、3日は寝かせる</li><li>疑問形ばかり送らない</li><li>短文で軽やかに</li>"
-        ng = "<li>長文の連打</li><li>「なんで返事くれないの？」という追撃</li>"
-        summary = "連絡頻度＝愛情の量ではありません。スマホを置いて、自分の時間を楽しみましょう。"
-        
-    elif "date" in topic_lower:
-        cat = "デート"
-        psychology = "彼は『あなたを楽しませられているか』不安に思っています。女性の笑顔が一番の安心材料です。"
-        action = "<li>お店の予約をしてくれたら全力で感謝</li><li>『美味しい！』『楽しい！』を言葉にする</li><li>次は自分から提案してみる</li>"
-        ng = "<li>スマホばかり見る</li><li>店員さんへの態度が悪い</li>"
-        summary = "デートは二人で作るもの。お客様気分でいると、彼の心は離れてしまいますよ。"
-        
-    elif "cheat" in topic_lower or "affair" in topic_lower:
-        cat = "浮気・不倫"
-        psychology = "浮気をする男性は、現状に満足していないか、単なるスリルを求めているかのどちらかです。罪悪感は薄い場合があります。"
-        action = "<li>証拠を冷静に集める</li><li>感情的に問い詰めない</li><li>自分の幸せの基準を見直す</li>"
-        ng = "<li>泣いてすがる</li><li>SNSで晒す</li>"
-        summary = "あなたの価値を下げる相手に執着する必要はありません。自分を一番大切にしてください。"
-        
-    elif "breakup" in topic_lower or "ex" in topic_lower:
-        cat = "復縁・失恋"
-        psychology = "男性は別れた直後は解放感を感じますが、時間が経つと『名前をつけて保存』した思い出を美化し始めます。"
-        action = "<li>冷却期間を置く（最低3ヶ月）</li><li>自分磨きをして変わった姿を見せる</li><li>SNSの更新を控える</li>"
-        ng = "<li>酔って電話する</li><li>『友達でいいから』とすがる</li>"
-        summary = "復縁のカギは『別れた原因の解消』と『変化』です。過去のあなたではなく、新しいあなたで再会しましょう。"
-    
-    elif "marry" in topic_lower or "marriage" in topic_lower:
-        cat = "結婚"
-        psychology = "男性にとって結婚は『責任』です。自由がなくなることへの恐怖と、経済的なプレッシャーを感じています。"
-        action = "<li>『結婚したら楽しそう』と思わせる</li><li>彼の仕事を応援する</li><li>期限を区切って話し合う</li>"
-        ng = "<li>親や周りと比較する</li><li>『ゼクシィ』を無言で置く</li>"
-        summary = "結婚はゴールではなくスタート。彼が『この子となら頑張れる』と思えるパートナーを目指しましょう。"
-        
-    else:
-        cat = "恋愛全般"
-        psychology = "相手の行動には必ず『理由』があります。嫌われたと思い込む前に、相手の状況（仕事、体調）を想像してみましょう。"
-        action = "<li>『I（アイ）メッセージ』で気持ちを伝える</li><li>感謝の言葉を増やす（ありがとう作戦）</li><li>笑顔を絶やさない</li>"
-        ng = "<li>察してちゃんになる</li><li>不機嫌でコントロールしようとする</li>"
-        summary = "恋愛の基本は自立です。彼がいなくても幸せ、彼がいるともっと幸せ。そんな女性が最強です。"
-
-    # Translation/Ad-hoc title adjustment if topic is English key
-    # Simple mapping for better titles
     if "first date" in topic_lower: title = "初デートで失敗しない！彼に『また会いたい』と思わせる振る舞い"
     elif "ghosting" in topic_lower: title = "急に連絡が途絶えた…ゴースティングする男性心理と対処法"
     elif "office" in topic_lower: title = "社内恋愛の注意点！仕事と恋を両立させるためのルール"
     elif "age gap" in topic_lower: title = "年の差恋愛の悩み…ジェネレーションギャップを乗り越える方法"
+
+    desc = f"{topic}についての悩みは深いですよね。ゆい姉さんが男性心理と解決策をズバリ解説します。"
     
+    # Improved Content Logics (match rewrite_articles.py)
+    content = {
+        "conclusion_main": "今のあなたの感情を否定せず、まずは「自分がどうしたいか」を最優先に考えましょう。",
+        "psychology": "相手も今の状況に少なからず違和感や不安を感じているかもしれません。直接的な言葉を避け、行動で示している可能性があります。",
+        "action": "<li>一旦距離を置いて冷静になる</li><li>自分の好きなことに没頭する時間を増やす</li><li>信頼できる友人に客観的な意見を聞く</li>",
+        "ng": "<li>感情的に相手を問い詰める</li><li>SNSで相手の動向を過剰にチェックする</li>",
+        "summary": f"{situation}の時期だからこそ、焦りは禁物です。「{topic}」について真剣に向き合っている自分を褒めてあげてくださいね。"
+    }
+
+    if "line" in topic_lower or "message" in topic_lower or "text" in topic_lower:
+        content["conclusion_main"] = "連絡の頻度は愛情の量に比例しません。彼を待つ時間ではなく、自分を磨く時間を楽しみましょう。"
+        content["psychology"] = "男性はLINEを「連絡手段」と捉えがち。既読がつくのは「確認した」という一つの完結点なのです。"
+        content["action"] = "<li>自分からの連絡を一度止め、3日ほど置く</li><li>返事のいらない軽い挨拶だけにする</li><li>スマホを触らない時間を決める</li>"
+        content["ng"] = "<li>長文の連打</li><li>「なんで返信ないの？」という追撃</li>"
+        
+    elif "cheat" in topic_lower or "affair" in topic_lower:
+        content["conclusion_main"] = "あなたの尊厳を損なう相手との未来を、冷静に再考する時期です。自分を一番に守ってください。"
+        content["psychology"] = "浮気には「支配欲」や「逃避」が隠れていることが多いです。あなたの責任ではなく、彼自身の問題です。"
+        content["action"] = "<li>感情を抑えて事実関係を確認する</li><li>自分の今後の人生設計（自立）を見直す</li><li>境界線を明確に引く</li>"
+        content["ng"] = "<li>泣き崩れて現状維持を懇願する</li><li>仕返しのために自分も過ちを犯す</li>"
+
+    elif "breakup" in topic_lower or "ex" in topic_lower:
+        content["conclusion_main"] = "復縁は「過去の修復」ではなく「新しい関係の構築」です。まずは自分を愛することから始めましょう。"
+        content["psychology"] = "別れた直後は男性も混乱しています。一人の時間を過ごすことで、大切さに気づくスペースが生まれます。"
+        content["action"] = "<li>冷却期間を半年設ける</li><li>新しい外見やスキルを手に入れる</li><li>彼以外の世界を広げる</li>"
+        content["ng"] = "<li>「やり直したい」と何度も迫る</li><li>共通の友人に彼の近況を聞きまくる</li>"
+
+    elif "marry" in topic_lower or "marriage" in topic_lower:
+        content["conclusion_main"] = "結婚はゴールではなく、生活のスタート。価値観の「擦り合わせ」ができる相手かを見極めて。"
+        content["psychology"] = "男性にとって結婚は「責任」の象徴。自由への未練と経済的な重圧を同時に感じています。"
+        content["action"] = "<li>理想の生活について具体的に話し合う</li><li>彼の仕事の価値観を尊重する</li><li>二人の「共通の楽しみ」を増やす</li>"
+        content["ng"] = "<li>周囲やSNSの結婚ラッシュと比較する</li><li>話し合いを感情的に切り出す</li>"
+
+    elif "sex" in topic_lower or "libido" in topic_lower:
+        content["conclusion_main"] = "性の悩みはコミュニケーションの映し鏡。恥ずかしがらず、しかし重くならずに話し合う勇気を。"
+        content["psychology"] = "性的コミュニケーションにおいて、男性は「拒絶されること」を極度に恐れている場合があります。"
+        content["action"] = "<li>日常的なスキンシップを増やす</li><li>「こうしてくれると嬉しい」と肯定から入る</li><li>体調やストレスを考慮し合う</li>"
+        content["ng"] = "<li>相手の能力や相性を否定する</li><li>無言のまま不満を溜め込む</li>"
+
     html_content = {
         "TITLE": title,
         "META_DESCRIPTION": desc,
-        "LEAD": lead,
-        "QUESTION": question,
-        "SUMMARY_ANSWER": summary,
-        "PSYCHOLOGY": psychology,
-        "ACTION_LIST": action,
-        "NG_LIST": ng,
+        "LEAD": "恋する乙女の皆さん、こんにちは。ゆい姉さんです。今日もまた一つ、切実な悩みが届きました。一人で抱え込まず、一緒に紐解いていきましょう。",
+        "QUESTION": f"最近、{topic}のことで悩んでいます。どうすればいいでしょうか？アドバイスをください。",
+        "SUMMARY_ANSWER": content["conclusion_main"],
+        "PSYCHOLOGY": content["psychology"],
+        "ACTION_LIST": content["action"],
+        "NG_LIST": content["ng"],
         "MISUNDERSTANDING": "『愛があれば何でも伝わる』は幻想です。言葉にしなければ伝わらないこともあります。",
-        "CONCLUSION": f"今回のテーマ『{topic}』、いかがでしたか？悩みは成長の種。焦らず、一歩ずつ進んでいきましょう。ゆい姉さんはいつでもあなたの味方です。",
-        "RELATED": f'<li><a href="archive.html">過去の相談を見る</a></li>'  # Simple link
+        "CONCLUSION": content["summary"],
+        "RELATED": f'<li><a href="archive.html">過去の相談を見る</a></li>'
     }
     
     return html_content, title, desc
