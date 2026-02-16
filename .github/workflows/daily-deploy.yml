@@ -8,6 +8,17 @@ on:
   push:
     branches: [ main ] # mainにプッシュされた時も自動で更新する
 
+# ↓ ここが重要！エラーを直すための権限設定を追加しました
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# デプロイメントが重複しないように制御
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,15 +26,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # GitHub Pagesを使っている場合、ここでデプロイを実行
-      # 特別なビルド（npm install等）が不要なHTMLサイトなら、
-      # 下記の公式アクションを使うのが一番簡単だよ
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+          
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
