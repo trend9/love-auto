@@ -272,7 +272,7 @@ for day_offset in range(DAYS):
             
         slug = generate_slug(topic, date_dot)
         file_path = os.path.join(POSTS_DIR, slug)
-        page_url = f"https://trend9.github.io/love-auto/posts/{slug}"
+        page_url = f"https://yui-love.vercel.app/posts/{slug}"
         
         content_map, title, desc = get_yui_content(topic)
         
