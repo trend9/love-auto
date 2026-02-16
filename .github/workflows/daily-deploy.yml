@@ -8,19 +8,21 @@ on:
   push:
     branches: [ main ] # mainにプッシュされた時も自動で更新する
 
-# ↓ ここが重要！エラーを直すための権限設定を追加しました
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# デプロイメントが重複しないように制御
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
   build:
+    # ↓ この3行を追加して「GitHub Pages用だよ」と教えてあげます
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
