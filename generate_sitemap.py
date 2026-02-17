@@ -22,8 +22,12 @@ def generate_sitemap():
         {"loc": f"{BASE_URL}profile.html", "lastmod": datetime.now().strftime("%Y-%m-%d"), "priority": "0.5"},
     ]
 
+    today_str = datetime.now().strftime("%Y.%m.%d")
+
     # Posts
     for post in posts:
+        if post["date"] > today_str:
+            continue
         # date format in json is YYYY.MM.DD
         lastmod = post["date"].replace(".", "-")
         urls.append({

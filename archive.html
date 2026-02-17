@@ -101,14 +101,23 @@
             filterAndRender('');
         }
 
+        function getTodayStr() {
+            const now = new Date();
+            // JST (UTC+9) に調整
+            const jstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+            return jstNow.toISOString().split('T')[0].replace(/-/g, '.');
+        }
+
         function renderFeaturedArticles() {
             const container = document.getElementById('featured-articles');
+            const todayStr = getTodayStr();
+            const livePosts = allPosts.filter(post => post.date <= todayStr);
 
             if (currentCategory === 'すべて') {
-                // すべてのカテゴリーから3記事ずつ表示
+                // すべてের カテゴリーから3記事ずつ表示
                 let html = '';
                 for (const cat of ['片思い', '彼氏・彼女', '結婚', '出会い', '復縁・別れ', '夜の悩み']) {
-                    const catPosts = allPosts.filter(post => getCategory(post) === cat).slice(0, 3);
+                    const catPosts = livePosts.filter(post => getCategory(post) === cat).slice(0, 3);
                     if (catPosts.length > 0) {
                         html += `
                             <div style="margin-bottom: 40px;">
@@ -129,7 +138,7 @@
                 container.innerHTML = html || '<p style="text-align:center;">記事がありません。</p>';
             } else {
                 // 選択されたカテゴリーから6記事表示
-                const catPosts = allPosts.filter(post => getCategory(post) === currentCategory).slice(0, 6);
+                const catPosts = livePosts.filter(post => getCategory(post) === currentCategory).slice(0, 6);
                 if (catPosts.length > 0) {
                     container.innerHTML = `
                         <h3 style="color:#d63384; border-left: 4px solid #ffc0cb; padding-left: 10px; margin-bottom: 15px;">${currentCategory}の注目記事</h3>
@@ -189,9 +198,10 @@
             displayedCount = 0;
 
             // カテゴリーでフィルタリング
-            let basePosts = allPosts;
+            const todayStr = getTodayStr();
+            let basePosts = allPosts.filter(post => post.date <= todayStr);
             if (currentCategory !== 'すべて') {
-                basePosts = allPosts.filter(post => getCategory(post) === currentCategory);
+                basePosts = basePosts.filter(post => getCategory(post) === currentCategory);
             }
 
             // 検索クエリでフィルタリング
