@@ -228,7 +228,7 @@ def get_yui_content(topic):
         "NG_LIST": ng,
         "MISUNDERSTANDING": misunderstanding,
         "CONCLUSION": summary,
-        "RELATED": f'<li><a href="archive.html">過去の相談を見る</a></li>'
+        "RELATED": f'<li><a href="../archive.html">過去の相談を見る</a></li>'
     }
     
     return html_content, title, html_content["META_DESCRIPTION"]
