@@ -19,47 +19,100 @@
 </head>
 
 <body>
-    <header>
-        <h1><a href="index.html" style="text-decoration:none; color:#8e44ad;">ゆい姉さんの相談室 アーカイブ</a></h1>
-    </header>
-
-    <main class="container">
-        <div class="site-intro" style="text-align:center;">
-            <p>過去の相談をキーワードで検索できるわ。</p>
-            <div class="search-box" style="text-align:center; margin-top:20px;">
-                <input type="text" id="archive-search" placeholder="キーワードを入力（例：復縁、LINE）"
-                    style="width:80%; max-width:400px; padding:10px; font-size:1rem;">
+    <div class="site-wrapper">
+        <aside class="sidebar-left">
+            <div class="yui-word"><strong>ゆい姉さん今日の一言</strong><br><span id="daily-msg">読み込み中...</span></div>
+            <button class="omikuji-btn" onclick="drawOmikuji()">ゆい姉さんおみくじ</button>
+            <div id="omikuji-result"
+                style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
+            <div class="ad-container">
+                <!-- 広告1 -->
+                <div class="ad-space">
+                    <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+                        <img border="0" height="250" alt=""
+                            src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+                    <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9"
+                        alt="">
+                </div>
+                <!-- 広告2 -->
+                <div class="ad-space">
+                    <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+                        <img border="0" height="250" alt=""
+                            src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+                    <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT"
+                        alt="">
+                </div>
             </div>
-            <p id="result-count" style="font-size:0.9rem; color:#666; margin-top:10px;"></p>
+        </aside>
+
+        <main class="container">
+            <div class="site-intro" style="text-align:center;">
+                <p>過去の相談をキーワードで検索できるわ。</p>
+                <div class="search-box" style="text-align:center; margin-top:20px;">
+                    <input type="text" id="archive-search" placeholder="キーワードを入力（例：復縁、LINE）"
+                        style="width:80%; max-width:400px; padding:10px; font-size:1rem;">
+                </div>
+                <p id="result-count" style="font-size:0.9rem; color:#666; margin-top:10px;"></p>
+            </div>
+
+            <!-- カテゴリータブ -->
+            <div class="category-tabs" id="category-tabs" style="margin: 30px 0;">
+                <button class="cat-tab active" onclick="filterByCat('すべて', this)">すべて</button>
+                <button class="cat-tab" onclick="filterByCat('片思い', this)">片思い</button>
+                <button class="cat-tab" onclick="filterByCat('彼氏・彼女', this)">彼氏・彼女</button>
+                <button class="cat-tab" onclick="filterByCat('結婚', this)">結婚</button>
+                <button class="cat-tab" onclick="filterByCat('出会い', this)">出会い</button>
+                <button class="cat-tab" onclick="filterByCat('復縁・別れ', this)">復縁・別れ</button>
+                <button class="cat-tab" onclick="filterByCat('夜の悩み', this)">夜の悩み</button>
+            </div>
+
+            <!-- 注目記事セクション -->
+            <div id="featured-articles" style="margin: 30px 0;">
+                <p style="text-align:center;">読み込み中...</p>
+            </div>
+
+            <hr style="border: 0; border-top: 2px solid #ffecf2; margin: 40px 0;">
+            <h2 style="color:#d63384; margin-bottom:20px;">すべての相談アーカイブ</h2>
+
+            <div id="archive-list" class="archive-grid">
+                <p style="text-align:center;">読み込み中...</p>
+            </div>
+
+            <div id="pagination" style="text-align:center; margin-top:40px; display:none;">
+                <button id="load-more-btn" class="omikuji-btn" style="width:auto; padding:10px 30px;">もっと見る</button>
+            </div>
+        </main>
+
+        <!-- モバイル用広告エリア（ページ下部） -->
+        <div class="mobile-ad-area">
+            <!-- 広告1 -->
+            <div class="ad-space">
+                <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+                    <img border="0" height="250" alt=""
+                        src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+                <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9"
+                    alt="">
+            </div>
+            <!-- 広告2 -->
+            <div class="ad-space">
+                <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+                    <img border="0" height="250" alt=""
+                        src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+                <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT"
+                    alt="">
+            </div>
         </div>
 
-        <!-- カテゴリータブ -->
-        <div class="category-tabs" id="category-tabs" style="margin: 30px 0;">
-            <button class="cat-tab active" onclick="filterByCat('すべて', this)">すべて</button>
-            <button class="cat-tab" onclick="filterByCat('片思い', this)">片思い</button>
-            <button class="cat-tab" onclick="filterByCat('彼氏・彼女', this)">彼氏・彼女</button>
-            <button class="cat-tab" onclick="filterByCat('結婚', this)">結婚</button>
-            <button class="cat-tab" onclick="filterByCat('出会い', this)">出会い</button>
-            <button class="cat-tab" onclick="filterByCat('復縁・別れ', this)">復縁・別れ</button>
-            <button class="cat-tab" onclick="filterByCat('夜の悩み', this)">夜の悩み</button>
-        </div>
-
-        <!-- 注目記事セクション -->
-        <div id="featured-articles" style="margin: 30px 0;">
-            <p style="text-align:center;">読み込み中...</p>
-        </div>
-
-        <hr style="border: 0; border-top: 2px solid #ffecf2; margin: 40px 0;">
-        <h2 style="color:#d63384; margin-bottom:20px;">すべての相談アーカイブ</h2>
-
-        <div id="archive-list" class="archive-grid">
-            <p style="text-align:center;">読み込み中...</p>
-        </div>
-
-        <div id="pagination" style="text-align:center; margin-top:40px; display:none;">
-            <button id="load-more-btn" class="omikuji-btn" style="width:auto; padding:10px 30px;">もっと見る</button>
-        </div>
-    </main>
+        <aside class="sidebar-right">
+            <div class="note-box">
+                <iframe src="https://note.com/embed/notes/nea7132e15dbe"
+                    style="border: 0; display: block; max-width: 100%; width: 100%; padding: 0px; margin: 10px 0; position: static; visibility: visible;"
+                    height="400"></iframe>
+            </div>
+            <a href="profile.html" class="bubble">ゆい姉さんのプロフィール</a>
+            <img src="yui.png" alt="ゆい姉さん" class="yui-img">
+        </aside>
+    </div>
 
     <footer style="text-align:center; padding:40px; color:#999; font-size:0.8rem;">
         <p>&copy; 2026 ゆい姉さんの恋愛相談室</p>
@@ -72,6 +125,18 @@
 
     <script src="data/questions.js"></script>
     <script>
+        // おみくじと今日の一言のロジックを追加
+        const words = ["自分を大切にね。", "明日はきっといい日になるわ。", "あなたの味方はここにいるわ。"];
+        if (document.getElementById('daily-msg')) {
+            document.getElementById('daily-msg').innerText = words[Math.floor(Math.random() * words.length)];
+        }
+
+        function drawOmikuji() {
+            const res = ["大吉：最高の出会いがあるかも！", "中吉：自分磨きが吉。", "吉：幸せが見つかる予感。"];
+            if (document.getElementById('omikuji-result')) {
+                document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
+            }
+        }
         let allPosts = [];
         let displayedCount = 0;
         const LOAD_STEP = 24;

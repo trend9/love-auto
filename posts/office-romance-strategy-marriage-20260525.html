@@ -76,6 +76,29 @@
 </head>
 
 <body>
+  <div class="site-wrapper">
+    <aside class="sidebar-left">
+      <div class="yui-word"><strong>ゆい姉さん今日の一言</strong><br><span id="daily-msg">読み込み中...</span></div>
+      <button class="omikuji-btn" onclick="drawOmikuji()">ゆい姉さんおみくじ</button>
+      <div id="omikuji-result"
+        style="margin-top:10px; font-size:0.85rem; color:#d63384; text-align:center; font-weight:bold;"></div>
+      <div class="ad-container">
+        <!-- 広告1 -->
+        <div class="ad-space">
+          <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+            <img border="0" height="250" alt=""
+              src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+          <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" alt="">
+        </div>
+        <!-- 広告2 -->
+        <div class="ad-space">
+          <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+            <img border="0" height="250" alt=""
+              src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+          <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT" alt="">
+        </div>
+      </div>
+    </aside>
 
     <main class="post-container">
 
@@ -167,6 +190,49 @@
 
     </main>
 
+      <!-- モバイル用広告エリア（ページ下部） -->
+    <div class="mobile-ad-area">
+      <!-- 広告1 -->
+      <div class="ad-space">
+        <a href="https://px.a8.net/svt/ejp?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" rel="nofollow">
+          <img border="0" height="250" alt=""
+            src="https://www21.a8.net/svt/bgt?aid=230526638523&wid=001&eno=01&mid=s00000009685003023000&mc=1"></a>
+        <img border="0" width="1" height="1" src="https://www11.a8.net/0.gif?a8mat=3T8ZHQ+8NDQ5U+22QA+HZXM9" alt="">
+      </div>
+      <!-- 広告2 -->
+      <div class="ad-space">
+        <a href="https://px.a8.net/svt/ejp?a8mat=3T909J+7N2A9E+9FQ+6DRLT" rel="nofollow">
+          <img border="0" height="250" alt=""
+            src="https://www26.a8.net/svt/bgt?aid=230527639462&wid=001&eno=01&mid=s00000001223001072000&mc=1"></a>
+        <img border="0" width="1" height="1" src="https://www13.a8.net/0.gif?a8mat=3T909J+7N2A9E+9FQ+6DRLT" alt="">
+      </div>
+    </div>
+
+    <aside class="sidebar-right">
+      <div class="note-box">
+        <iframe src="https://note.com/embed/notes/nea7132e15dbe"
+          style="border: 0; display: block; max-width: 100%; width: 100%; padding: 0px; margin: 10px 0; position: static; visibility: visible;"
+          height="400"></iframe>
+      </div>
+      <a href="../profile.html" class="bubble">ゆい姉さんのプロフィール</a>
+      <img src="../yui.png" alt="ゆい姉さん" class="yui-img">
+    </aside>
+  </div>
+
+  <script>
+    // おみくじと今日の一言のロジック
+    const words = ["自分を大切にね。", "明日はきっといい日になるわ。", "あなたの味方はここにいるわ。"];
+    if (document.getElementById('daily-msg')) {
+      document.getElementById('daily-msg').innerText = words[Math.floor(Math.random() * words.length)];
+    }
+
+    function drawOmikuji() {
+      const res = ["大吉：最高の出会いがあるかも！", "中吉：自分磨きが吉。", "吉：幸せが見つかる予感。"];
+      if (document.getElementById('omikuji-result')) {
+        document.getElementById('omikuji-result').innerText = res[Math.floor(Math.random() * res.length)];
+      }
+    }
+  </script>
   <script src="note-embed.js"></script>
 </body>
 
