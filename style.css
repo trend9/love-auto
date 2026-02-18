@@ -364,8 +364,8 @@ header h1 {
 .sidebar-left,
 .sidebar-right {
     position: sticky;
-    top: 20px;
-    height: calc(100vh - 40px);
+    top: 0;
+    height: 100vh;
     overflow-y: auto;
     scrollbar-width: none;
     /* Firefox */
@@ -387,7 +387,10 @@ header h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 20px;
+    justify-content: flex-end;
+    /* 立ち絵を下に固定 */
+    padding: 0;
+    /* 画像をフル幅にするためパディング削除 */
     background: transparent;
 }
 
