@@ -387,10 +387,8 @@ header h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-end;
-    /* 立ち絵を下に固定 */
+    justify-content: flex-start;
     padding: 0;
-    /* 画像をフル幅にするためパディング削除 */
     background: transparent;
 }
 
@@ -423,6 +421,8 @@ header h1 {
     width: 100%;
     height: auto;
     display: block;
+    margin-top: auto;
+    /* 立ち絵を一番下に固定 */
 }
 
 .bubble {
@@ -457,8 +457,8 @@ header h1 {
 
 .note-box {
     width: 100%;
-    margin-top: 50px;
-    /* 少し余裕を持たせる */
+    margin-top: 150px;
+    /* ブラウザからはみ出ないよう十分に下げる */
     margin-bottom: 20px;
 }
 
