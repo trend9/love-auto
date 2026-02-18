@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 全HTMLファイルから不適切なURL（日本語や特殊文字を含む）を検出し、
-実際のファイル名に基づいて正しいURLに修正するスクリプト
+実際のファイル名に基づいて正しいURLに修正するスクリプト（改善版）
 """
 
 import os
@@ -37,10 +37,10 @@ def extract_filename_from_url(url):
         return match.group(1)
     return None
 
-def find_correct_filename(incorrect_filename, actual_files):
+def find_correct_filename(incorrect_filename, actual_files, current_file=None):
     """
     不適切なファイル名から正しいファイル名を推測
-    日付部分（YYYYMMDD形式）をキーにマッチング
+    現在のファイル名をコンテキストとして使用
     """
     # URLデコード
     decoded = unquote(incorrect_filename)
@@ -48,6 +48,16 @@ def find_correct_filename(incorrect_filename, actual_files):
     # 既に正しいファイル名の場合
     if decoded in actual_files:
         return actual_files[decoded]
+    
+    # 現在のファイル自身を指している可能性をチェック
+    if current_file and current_file in actual_files.values():
+        # ファイル名から日付を抽出
+        current_date = re.search(r'(\d{8})', current_file)
+        incorrect_date = re.search(r'(\d{8})', decoded)
+        
+        if current_date and incorrect_date and current_date.group(1) == incorrect_date.group(1):
+            # 同じ日付なら現在のファイル自身を返す
+            return current_file
     
     # 日付パターンを抽出（20260101形式）
     date_match = re.search(r'(\d{8})', decoded)
@@ -65,6 +75,8 @@ def find_correct_filename(incorrect_filename, actual_files):
 
 def fix_urls_in_file(filepath, actual_files):
     """1つのHTMLファイル内の不適切なURLを修正"""
+    current_filename = Path(filepath).name
+    
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -81,7 +93,7 @@ def fix_urls_in_file(filepath, actual_files):
             return full_match
         
         filename = url.split('/')[-1]
-        correct = find_correct_filename(filename, actual_files)
+        correct = find_correct_filename(filename, actual_files, current_filename)
         
         if correct and correct != filename:
             changes.append(f"  {filename} → {correct}")
@@ -103,7 +115,7 @@ def fix_urls_in_file(filepath, actual_files):
         if filename.isascii() and not any(char in filename for char in ['%', '・', '（', '）']):
             return full_match
         
-        correct = find_correct_filename(filename, actual_files)
+        correct = find_correct_filename(filename, actual_files, current_filename)
         
         if correct and correct != filename:
             new_url = BASE_URL + correct
@@ -126,7 +138,7 @@ def fix_urls_in_file(filepath, actual_files):
         if filename.isascii() and not any(char in filename for char in ['%', '・', '（', '）']):
             return full_match
         
-        correct = find_correct_filename(filename, actual_files)
+        correct = find_correct_filename(filename, actual_files, current_filename)
         
         if correct and correct != filename:
             new_url = BASE_URL + correct
@@ -135,6 +147,25 @@ def fix_urls_in_file(filepath, actual_files):
         return full_match
     
     content = re.sub(r'"@id":\s*"(https://yui-love\.vercel\.app/posts/[^"]+\.html)"', replace_jsonld_id, content)
+    
+    # パターン4: rel="canonical" href="xxxxx.html" (相対パス)
+    def replace_canonical(match):
+        full_match = match.group(0)
+        url = match.group(1)
+        
+        # ASCII文字のみの場合はスキップ
+        if url.isascii() and not any(char in url for char in ['%', '・', '（', '）']):
+            return full_match
+        
+        filename = url.split('/')[-1]
+        correct = find_correct_filename(filename, actual_files, current_filename)
+        
+        if correct and correct != filename:
+            changes.append(f"  canonical: {filename} → {correct}")
+            return f'<link rel="canonical" href="{BASE_URL}{correct}">'
+        return full_match
+    
+    content = re.sub(r'<link rel="canonical" href="([^"]+\.html)">', replace_canonical, content)
     
     # 変更があった場合のみファイルを更新
     if content != original_content:
@@ -145,7 +176,7 @@ def fix_urls_in_file(filepath, actual_files):
     return []
 
 def main():
-    print("🔍 不適切なURLの検出と修正を開始します...")
+    print("🔍 不適切なURLの検出と修正を開始します（改善版）...")
     print()
     
     # 実際のファイル名マップを作成
