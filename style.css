@@ -430,7 +430,7 @@ header h1 {
 
 .bubble {
     position: absolute;
-    bottom: 320px;
+    bottom: 450px;
     /* 立ち絵の頭付近に固定 */
     left: 50%;
     transform: translateX(-50%);
@@ -465,8 +465,8 @@ header h1 {
 
 .note-box {
     width: 100%;
-    margin-top: 250px;
-    /* ブラウザからはみ出ないよう十分に下げる */
+    margin-top: 100px;
+    /* 上に引き上げる */
     margin-bottom: 20px;
 }
 
